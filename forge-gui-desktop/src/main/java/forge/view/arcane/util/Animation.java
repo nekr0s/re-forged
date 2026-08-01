@@ -19,10 +19,9 @@ package forge.view.arcane.util;
 
 import java.awt.Container;
 import java.awt.EventQueue;
-import java.util.Timer;
-import java.util.TimerTask;
 
 import javax.swing.JLayeredPane;
+import javax.swing.Timer;
 
 import forge.view.arcane.CardPanel;
 
@@ -36,21 +35,16 @@ import forge.view.arcane.CardPanel;
  * @version $Id: Animation.java 24769 2014-02-09 13:56:04Z Hellfish $
  */
 public abstract class Animation {
-    /** Constant <code>TARGET_MILLIS_PER_FRAME=30</code>. */
-    private static final long TARGET_MILLIS_PER_FRAME = 30;
+    /** About 60 frames a second, which is as smooth as a Swing timer usefully gets. */
+    private static final int TARGET_MILLIS_PER_FRAME = 16;
 
-    /** Constant <code>timer</code>. */
-    private static final Timer timer = new Timer("Animation", true);
-
-    private final long delay;
-
-    private final TimerTask timerTask;
-    private FrameTimer frameTimer;
-    private long elapsed;
+    private final long duration;
+    private final Timer timer;
+    private long startedAt;
 
     /**
      * Constructor for Animation, with a default delay of zero.
-     * 
+     *
      * @param duration
      *            the duration, in milliseconds, for which the animation will
      *            run.
@@ -61,55 +55,68 @@ public abstract class Animation {
 
     /**
      * Constructor for Animation.
-     * 
-     * @param duration
+     *
+     * @param duration0
      *            the duration, in milliseconds, for which the animation will
      *            run.
      * @param delay
-     *            the delay, in milliseconds, between subsequent
-     *            {@link #update(float)} calls while the animation is running.
+     *            the delay, in milliseconds, before the first
+     *            {@link #update(float)} call.
      */
-    private Animation(final long duration, final long delay) {
-        this.delay = delay;
-        timerTask = new TimerTask() {
-            @Override public void run() {
-                if (frameTimer == null) {
-                    onStart();
-                    frameTimer = new FrameTimer();
-                }
-                elapsed += frameTimer.getTimeSinceLastFrame();
-                if (elapsed >= duration) {
-                    cancel();
-                    elapsed = duration;
-                }
-                update(elapsed / (float) duration);
-                if (elapsed == duration) {
-                    onEnd();
-                }
-            }
-        };
+    private Animation(final long duration0, final long delay) {
+        duration = Math.max(1, duration0);
+        // A Swing timer, so every frame runs on the EDT. The shared java.util.Timer
+        // this used to run on moved components from a background thread while the
+        // EDT was painting them, which tore the motion up regardless of frame rate.
+        timer = new Timer(TARGET_MILLIS_PER_FRAME, e -> tick());
+        timer.setInitialDelay((int) Math.max(0, delay));
     }
 
     /**
      * Starts the animation.
      */
     protected final void run() {
-        timer.scheduleAtFixedRate(timerTask, delay, TARGET_MILLIS_PER_FRAME);
+        timer.start();
+    }
+
+    private void tick() {
+        if (startedAt == 0) {
+            startedAt = System.nanoTime();
+            onStart();
+        }
+        // Position comes from the clock rather than from a frame count, so a frame
+        // the EDT was too busy to deliver costs smoothness but never stretches the
+        // animation out past the time it was asked to take.
+        final long elapsed = (System.nanoTime() - startedAt) / 1_000_000L;
+        if (elapsed >= duration) {
+            cancel();
+            return;
+        }
+        update(ease(elapsed / (float) duration));
     }
 
     /**
-     * Called every {@link #delay} ms while the animation is running.
-     * 
+     * Eases in and out, so a card gathers speed as it leaves and settles as it
+     * arrives rather than travelling at one flat speed between two hard stops.
+     */
+    private static float ease(final float t) {
+        return t < 0.5f ? 4 * t * t * t : 1 - (float) Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    /**
+     * Called once per frame while the animation is running.
+     *
      * @param percentage
      *            a float.
      */
     protected abstract void update(float percentage);
 
     /**
-     * Cancel the animation.
+     * Cancel the animation, leaving whatever it was moving at its end state.
      */
     protected final void cancel() {
-        timerTask.cancel();
+        timer.stop();
+        update(1f);
         onEnd();
     }
 
@@ -135,52 +142,6 @@ public abstract class Animation {
      */
     private static void invokeLater(final Runnable runnable) {
         EventQueue.invokeLater(runnable);
-    }
-
-    /**
-     * Uses averaging of the time between the past few frames to provide smooth
-     * animation.
-     */
-    private static final class FrameTimer {
-        private static final int SAMPLES = 6;
-        private static final long MAX_FRAME = 100; // Max time for one frame, to
-                                                   // weed out spikes.
-
-        private long[] samples = new long[SAMPLES];
-        private int sampleIndex;
-
-        public FrameTimer() {
-            long currentTime = System.currentTimeMillis();
-            for (int i = SAMPLES - 1; i >= 0; i--) {
-                samples[i] = currentTime - (SAMPLES - i) * TARGET_MILLIS_PER_FRAME;
-            }
-        }
-
-        public long getTimeSinceLastFrame() {
-            long currentTime = System.currentTimeMillis();
-
-            int id = sampleIndex - 1;
-            if (id < 0) {
-                id += SAMPLES;
-            }
-
-            long timeSinceLastSample = currentTime - samples[id];
-
-            // If the slice was too big, advance all the previous times by the
-            // diff.
-            if (timeSinceLastSample > MAX_FRAME) {
-                long diff = timeSinceLastSample - MAX_FRAME;
-                for (int i = 0; i < SAMPLES; i++) {
-                    samples[i] += diff;
-                }
-            }
-
-            long timeSinceOldestSample = currentTime - samples[sampleIndex];
-            samples[sampleIndex] = currentTime;
-            sampleIndex = (sampleIndex + 1) % SAMPLES;
-
-            return timeSinceOldestSample / SAMPLES;
-        }
     }
 
     /**

@@ -24,6 +24,7 @@ import java.awt.MultipleGradientPaint;
 import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
 import java.awt.geom.Point2D;
+import java.awt.image.BufferedImage;
 
 import forge.PlayerMat;
 import forge.toolbox.FSkin.SkinnedPanel;
@@ -44,6 +45,10 @@ public class PlayerMatPanel extends SkinnedPanel {
     private static final float VIGNETTE_ALPHA = 0.38f;
 
     private PlayerMat mat = PlayerMat.SLATE;
+
+    /** The mat drawn once at the current size, rebuilt when either of those changes. */
+    private BufferedImage rendered;
+    private PlayerMat renderedMat;
 
     public PlayerMatPanel() {
         // Stays non-opaque even when a mat is drawn: paintComponent covers every
@@ -72,7 +77,20 @@ public class PlayerMatPanel extends SkinnedPanel {
             return;
         }
 
-        final Graphics2D g2d = (Graphics2D) g.create();
+        // The battlefield above this is transparent, so anything moving over it —
+        // a card being dragged, a card flying in — repaints the mat behind it every
+        // frame. Rendering the gradients once and blitting keeps that cheap.
+        if (rendered == null || renderedMat != mat
+                || rendered.getWidth() != w || rendered.getHeight() != h) {
+            rendered = render(w, h);
+            renderedMat = mat;
+        }
+        g.drawImage(rendered, 0, 0, null);
+    }
+
+    private BufferedImage render(final int w, final int h) {
+        final BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        final Graphics2D g2d = image.createGraphics();
         g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -101,5 +119,6 @@ public class PlayerMatPanel extends SkinnedPanel {
         g2d.drawRect(0, 0, w - 1, h - 1);
 
         g2d.dispose();
+        return image;
     }
 }
