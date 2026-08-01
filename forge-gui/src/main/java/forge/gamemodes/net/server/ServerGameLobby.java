@@ -55,7 +55,9 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
     }
 
     public ServerGameLobby() {
-        addSlot(new LobbySlot(LobbySlotType.LOCAL, localName(), localAvatarIndices()[0], localSleeveIndices()[0],0, true, false, Collections.emptySet()));
+        final LobbySlot hostSlot = new LobbySlot(LobbySlotType.LOCAL, localName(), localAvatarIndices()[0], localSleeveIndices()[0],0, true, false, Collections.emptySet());
+        hostSlot.setMatKey(localMatKey(0));
+        addSlot(hostSlot);
         addSlot(new LobbySlot(LobbySlotType.OPEN, null, -1, -1, 1, false, false, Collections.emptySet()));
     }
 
@@ -68,24 +70,28 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
      * @param name the player's name
      * @param avatarIndex the avatar index
      * @param sleeveIndex the sleeve index
+     * @param matKey the play mat key
      * @return the assigned slot index, or -1 if no slots available
      */
-    public synchronized int connectPlayer(final String name, final int avatarIndex, final int sleeveIndex) {
+    public synchronized int connectPlayer(final String name, final int avatarIndex, final int sleeveIndex, final String matKey) {
         final int nSlots = getNumberOfSlots();
         for (int index = 0; index < nSlots; index++) {
             final LobbySlot slot = getSlot(index);
             if (slot.getType() == LobbySlotType.OPEN) {
-                connectPlayer(name, avatarIndex, sleeveIndex, slot);
+                connectPlayer(name, avatarIndex, sleeveIndex, matKey, slot);
                 return index;
             }
         }
         return -1;
     }
-    private void connectPlayer(final String name, final int avatarIndex, final int sleeveIndex, final LobbySlot slot) {
+    private void connectPlayer(final String name, final int avatarIndex, final int sleeveIndex, final String matKey, final LobbySlot slot) {
         slot.setType(LobbySlotType.REMOTE);
         slot.setName(name);
         slot.setAvatarIndex(avatarIndex);
         slot.setSleeveIndex(sleeveIndex);
+        if (matKey != null && !matKey.isEmpty()) {
+            slot.setMatKey(matKey);
+        }
         updateView(false);
     }
     public void disconnectPlayer(final int index) {
