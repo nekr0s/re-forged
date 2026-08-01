@@ -21,6 +21,7 @@ import java.awt.Component;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 import javax.swing.JLayeredPane;
@@ -37,47 +38,82 @@ import forge.view.arcane.util.Animation;
 /**
  * Flies a card from wherever the player last saw it to wherever it has just
  * landed — hand to stack when a spell is cast, stack to battlefield when it
- * resolves.
+ * resolves, hand to battlefield for a land.
  * <p>
  * The flight is a throwaway {@link CardPanel} moved across the frame's layered
  * pane, so it passes over everything and disturbs no layout. Every entry point
  * reports whether it found somewhere to fly from; callers fall back to showing
  * the card outright when it didn't, which is what the UI did for everything
  * before.
+ * <p>
+ * Positions are held in screen coordinates, because the stack lives in its own
+ * window and only screen coordinates mean the same thing in both.
  */
 public final class CardFlight {
     /** How long a card takes to cross the board. Short enough not to hold up play. */
     private static final int FLIGHT_MS = 320;
     /** Size of the card puff that stands in for a hand nobody can see. */
     private static final int HIDDEN_ORIGIN_WIDTH = 14;
+    /**
+     * How long a card's last position stays worth flying out of. Long enough to
+     * cover the updates of one game event, short enough that a card returning from
+     * a graveyard turns later doesn't fly out of where it died.
+     */
+    private static final long DEPARTURE_TTL_MS = 1500;
 
     private final CMatchUI matchUI;
-    /**
-     * Where cards were last shown, recorded as the panel showing them is thrown
-     * away. Entries are consumed by the next flight and dropped otherwise, so a
-     * card never flies out of a position it held some turns ago.
-     */
-    private final Map<Integer, Rectangle> departures = new HashMap<>();
+    /** Where cards were last shown, recorded as the panel showing them is thrown away. */
+    private final Map<Integer, Departure> departures = new HashMap<>();
+
+    private record Departure(Rectangle bounds, long at) { }
 
     CardFlight(final CMatchUI matchUI0) {
         matchUI = matchUI0;
     }
 
-    /** Notes where a card is on screen, just before the panel showing it goes away. */
-    public void recordDeparture(final CardView card, final Component from) {
-        if (card == null || from == null || !from.isShowing()) { return; }
-        final Rectangle bounds = toLayeredPane(from.getLocationOnScreen(), from.getWidth(), from.getHeight());
-        if (bounds != null) {
-            departures.put(card.getId(), bounds);
-        }
+    /**
+     * Notes where a card is on screen, just before the panel showing it goes away.
+     * Zones redraw one at a time and in no fixed order, so the zone a card is
+     * entering may well redraw after the one it left; this is what it flies out of
+     * when that happens.
+     */
+    public void recordDeparture(final CardView card, final Rectangle onScreen) {
+        if (card == null || onScreen == null) { return; }
+        pruneDepartures();
+        departures.put(card.getId(), new Departure(onScreen, System.currentTimeMillis()));
+    }
+
+    /** Where a card panel's art is on screen, or null while it isn't showing. */
+    public static Rectangle screenBoundsOf(final CardPanel panel) {
+        if (panel == null || !panel.isShowing() || panel.getCardWidth() <= 0) { return null; }
+        final Point loc = panel.getCardLocationOnScreen();
+        return new Rectangle(loc.x, loc.y, panel.getCardWidth(), panel.getCardHeight());
     }
 
     /**
-     * Drops everything remembered. Called before each fresh round of departures is
-     * recorded, so what is held is never older than one stack change.
+     * Where a card should fly out of, in screen coordinates: the panel still
+     * showing it in a hand, else wherever it was when the last panel showing it
+     * went away.
+     * <p>
+     * Call this while the card is still in the zone it is leaving. Anything that
+     * has to wait for layout before it can animate should take the origin now and
+     * hand it to {@link #fly} later, or the card will have moved on by then.
+     *
+     * @param allowHiddenZone whether a hand the player cannot see may stand in
+     *      when there is no panel to fly from at all.
      */
-    public void forgetDepartures() {
-        departures.clear();
+    public Rectangle originOf(final CardView card, final boolean allowHiddenZone) {
+        if (card == null) { return null; }
+
+        for (final VHand hand : matchUI.getHandViews()) {
+            final Rectangle bounds = screenBoundsOf(hand.getHandArea().getCardPanel(card.getId()));
+            if (bounds != null) { return bounds; }
+        }
+        final Departure departed = departures.remove(card.getId());
+        if (departed != null && System.currentTimeMillis() - departed.at() <= DEPARTURE_TTL_MS) {
+            return departed.bounds();
+        }
+        return allowHiddenZone ? hiddenZoneOrigin(card.getController()) : null;
     }
 
     /**
@@ -87,78 +123,42 @@ public final class CardFlight {
     public boolean flyInto(final CardPanel placeholder) {
         if (placeholder == null || !placeholder.isShowing()) { return false; }
         final CardView card = placeholder.getCard();
-        // No zone fallback here: a card can reach the battlefield from anywhere,
-        // and guessing would fly cards out of zones they were never in.
-        final Rectangle origin = originOf(card, false);
+        // A token is made on the battlefield rather than moved to it, so it has
+        // nowhere to come from; everything else came out of a zone of its owner's.
+        final Rectangle origin = originOf(card, card != null && !card.isToken());
         if (origin == null) { return false; }
 
-        final Point target = SwingUtilities.convertPoint(placeholder.getParent(),
-                placeholder.getCardLocation(), layeredPane());
+        final Point target = placeholder.getCardLocationOnScreen();
         return fly(card, origin, target, placeholder.getCardWidth(), placeholder);
     }
 
-    /**
-     * Flies a card to a point given in screen coordinates — used for the stack,
-     * which lives in its own window and so has no place in the layered pane.
-     */
-    public boolean flyToScreen(final CardView card, final Point targetOnScreen, final int targetWidth) {
-        if (card == null || targetOnScreen == null || targetWidth <= 0) { return false; }
-        // A card only reaches the stack by being cast, so a hand nobody can see is
-        // a safe guess at where an opponent's spell came from.
-        final Rectangle origin = originOf(card, true);
-        if (origin == null) { return false; }
-
-        final Point target = new Point(targetOnScreen);
-        SwingUtilities.convertPointFromScreen(target, layeredPane());
-        return fly(card, origin, target, targetWidth, null);
+    /** Flies a card from an origin taken earlier to a point in screen coordinates. */
+    public boolean fly(final CardView card, final Rectangle origin, final Point targetOnScreen,
+            final int targetWidth) {
+        return fly(card, origin, targetOnScreen, targetWidth, null);
     }
 
-    private boolean fly(final CardView card, final Rectangle origin, final Point target,
+    private boolean fly(final CardView card, final Rectangle origin, final Point targetOnScreen,
             final int targetWidth, final CardPanel placeholder) {
+        if (card == null || origin == null || targetOnScreen == null || targetWidth <= 0) { return false; }
         if (!Singletons.getView().getFrame().isShowing() || !matchUI.isCurrentScreen()) { return false; }
-        if (origin.x == target.x && origin.y == target.y) { return false; }
 
-        final CardPanel flier = new CardPanel(matchUI, card);
-        Animation.moveCard(origin.x, origin.y, origin.width, target.x, target.y, targetWidth,
-                flier, placeholder, layeredPane(), FLIGHT_MS);
+        final JLayeredPane pane = layeredPane();
+        if (pane == null || !pane.isShowing()) { return false; }
+        final Point from = toPane(origin.getLocation(), pane);
+        final Point to = toPane(targetOnScreen, pane);
+        if (from.equals(to)) { return false; } //nowhere to travel
+
+        Animation.moveCard(from.x, from.y, origin.width, to.x, to.y, targetWidth,
+                new CardPanel(matchUI, card), placeholder, pane, FLIGHT_MS);
         return true;
     }
 
     /**
-     * Where a card should fly out of: the panel still showing it in a hand or on
-     * the stack, else wherever it was when the last panel showing it went away.
-     *
-     * @param allowHiddenZone whether a hand the player cannot see may stand in
-     *      when there is no panel to fly from at all.
-     */
-    private Rectangle originOf(final CardView card, final boolean allowHiddenZone) {
-        if (card == null) { return null; }
-
-        // Zones update one after another, so the zone a card is leaving usually
-        // still has it on screen when the zone it is entering redraws.
-        for (final VHand hand : matchUI.getHandViews()) {
-            final CardPanel panel = hand.getHandArea().getCardPanel(card.getId());
-            if (panel != null && panel.isShowing() && panel.getCardWidth() > 0) {
-                final Point loc = SwingUtilities.convertPoint(panel.getParent(),
-                        panel.getCardLocation(), layeredPane());
-                return new Rectangle(loc.x, loc.y, panel.getCardWidth(), panel.getCardHeight());
-            }
-        }
-        final Rectangle onStack = matchUI.getCStack().getView().getCardBoundsOnScreen(card.getId());
-        if (onStack != null) {
-            final Rectangle inPane = toLayeredPane(onStack.getLocation(), onStack.width, onStack.height);
-            if (inPane != null) { return inPane; }
-        }
-
-        final Rectangle departed = departures.remove(card.getId());
-        if (departed != null) { return departed; }
-
-        return allowHiddenZone ? hiddenZoneOrigin(card.getController()) : null;
-    }
-
-    /**
-     * A small card-shaped patch over the zone readout of a player whose hand is
-     * not on screen — the only thing there is to fly their cards out of.
+     * A small card-shaped patch over the zone readout of a player whose hand is not
+     * on screen — the only thing there is to fly their cards out of. The readout
+     * carries every hidden zone they have, not just the hand, so a card coming from
+     * their graveyard or library flies out of an honest place too.
      */
     private Rectangle hiddenZoneOrigin(final PlayerView controller) {
         if (controller == null || matchUI.getHandFor(controller) != null) { return null; }
@@ -168,18 +168,24 @@ public final class CardFlight {
         if (!details.isShowing() || details.getWidth() == 0) { return null; }
 
         final int height = Math.round(HIDDEN_ORIGIN_WIDTH * CardPanel.ASPECT_RATIO);
-        final Point centre = SwingUtilities.convertPoint(details,
-                details.getWidth() / 2, details.getHeight() / 2, layeredPane());
+        final Point centre = details.getLocationOnScreen();
+        centre.translate(details.getWidth() / 2, details.getHeight() / 2);
         return new Rectangle(centre.x - HIDDEN_ORIGIN_WIDTH / 2, centre.y - height / 2,
                 HIDDEN_ORIGIN_WIDTH, height);
     }
 
-    private Rectangle toLayeredPane(final Point onScreen, final int width, final int height) {
-        final JLayeredPane pane = layeredPane();
-        if (pane == null || !pane.isShowing()) { return null; }
+    private void pruneDepartures() {
+        final long now = System.currentTimeMillis();
+        final Iterator<Departure> it = departures.values().iterator();
+        while (it.hasNext()) {
+            if (now - it.next().at() > DEPARTURE_TTL_MS) { it.remove(); }
+        }
+    }
+
+    private static Point toPane(final Point onScreen, final JLayeredPane pane) {
         final Point p = new Point(onScreen);
         SwingUtilities.convertPointFromScreen(p, pane);
-        return new Rectangle(p.x, p.y, width, height);
+        return p;
     }
 
     private static JLayeredPane layeredPane() {

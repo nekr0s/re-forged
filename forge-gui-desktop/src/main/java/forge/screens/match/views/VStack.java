@@ -65,6 +65,7 @@ import forge.gui.framework.IVDoc;
 import forge.interfaces.IGameController;
 import forge.localinstance.skin.FSkinProp;
 import forge.player.AutoYieldStore.TriggerDecision;
+import forge.screens.match.CardFlight;
 import forge.screens.match.controllers.CDock.ArcState;
 import forge.screens.match.controllers.CStack;
 import forge.toolbox.FLabel;
@@ -87,7 +88,7 @@ public class VStack implements IVDoc<CStack> {
     /** Height of the strip naming the player who put the item on the stack. */
     private static final int HEADER_HEIGHT = 17;
     /** Card width used when the cascade is free to pick its own size. */
-    private static final int BASE_CARD_WIDTH = 270;
+    private static final int BASE_CARD_WIDTH = 210;
     /** Height a full-size card is drawn at, and the half of it the cascade never shrinks past. */
     private static final int BASE_CARD_HEIGHT = Math.round(BASE_CARD_WIDTH * CardPanel.ASPECT_RATIO);
     private static final int MIN_CARD_HEIGHT = BASE_CARD_HEIGHT / 2;
@@ -141,7 +142,15 @@ public class VStack implements IVDoc<CStack> {
     /** Ids of the items the stack showed last update, so the new arrivals stand out. */
     private final Set<Integer> lastItemIds = new HashSet<>();
     /** Items added by the last update, waiting to be flown in once they are on screen. */
-    private final List<StackItemPanel> arrivals = new ArrayList<>();
+    private final List<Arrival> arrivals = new ArrayList<>();
+
+    /**
+     * An item that has just gone on the stack, with the place its card was cast
+     * from. The origin has to be taken while the stack is being rebuilt, because
+     * by the time the window is up and the flight can start, the hand has redrawn
+     * without the card and there is nothing left to fly out of.
+     */
+    private record Arrival(StackItemPanel panel, Rectangle origin) { }
 
     /** The item the targeting arc and the card detail are pointed at. */
     private StackItemPanel hoveredItem;
@@ -284,17 +293,15 @@ public class VStack implements IVDoc<CStack> {
                 ? items.threadSafeIterable() : items;
 
         // An item that has gone is one that resolved or was countered, so note where
-        // it sat: whatever it turns into next flies out of there. Only the last
-        // update's departures are kept, so nothing ever flies out of a stale position.
+        // it sat: whatever it turns into next flies out of there.
+        final CardFlight flight = controller.getMatchUI().getCardFlight();
         final Set<Integer> currentIds = new HashSet<>();
         for (final StackItemView item : safeItems) {
             currentIds.add(item.getId());
         }
-        controller.getMatchUI().getCardFlight().forgetDepartures();
         for (final StackItemPanel panel : stackPanel.items) {
             if (!currentIds.contains(panel.getItem().getId())) {
-                controller.getMatchUI().getCardFlight()
-                        .recordDeparture(panel.getItem().getSourceCard(), panel);
+                flight.recordDeparture(panel.getItem().getSourceCard(), panel.getCardBoundsOnScreen());
             }
         }
 
@@ -308,7 +315,11 @@ public class VStack implements IVDoc<CStack> {
             final StackItemPanel panel = new StackItemPanel(item);
             stackPanel.addItem(panel, new StackTextRow(panel));
             if (!lastItemIds.contains(item.getId())) {
-                arrivals.add(panel);
+                // Taken now, while the card is still in the hand it was cast from.
+                final Rectangle origin = flight.originOf(item.getSourceCard(), true);
+                if (origin != null) {
+                    arrivals.add(new Arrival(panel, origin));
+                }
             }
 
             //update the Card Picture/Detail when the spell is added to the stack
@@ -335,27 +346,17 @@ public class VStack implements IVDoc<CStack> {
      */
     public void animateArrivals() {
         if (arrivals.isEmpty()) { return; }
-        final List<StackItemPanel> pending = new ArrayList<>(arrivals);
+        final List<Arrival> pending = new ArrayList<>(arrivals);
         arrivals.clear();
         SwingUtilities.invokeLater(() -> {
-            for (final StackItemPanel panel : pending) {
-                final Rectangle bounds = panel.getCardBoundsOnScreen();
-                if (bounds != null) {
-                    controller.getMatchUI().getCardFlight().flyToScreen(
-                            panel.getItem().getSourceCard(), bounds.getLocation(), bounds.width);
+            for (final Arrival arrival : pending) {
+                final Rectangle target = arrival.panel().getCardBoundsOnScreen();
+                if (target != null) {
+                    controller.getMatchUI().getCardFlight().fly(arrival.panel().getItem().getSourceCard(),
+                            arrival.origin(), target.getLocation(), target.width);
                 }
             }
         });
-    }
-
-    /** Where a card currently on the stack is drawn on screen, or null if it isn't. */
-    public Rectangle getCardBoundsOnScreen(final int cardId) {
-        for (final StackItemPanel panel : stackPanel.items) {
-            if (panel.getItem().getSourceCard().getId() == cardId) {
-                return panel.getCardBoundsOnScreen();
-            }
-        }
-        return null;
     }
 
     /**
