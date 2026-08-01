@@ -42,6 +42,7 @@ import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JScrollBar;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
@@ -311,10 +312,12 @@ public class VStack implements IVDoc<CStack> {
         stackPanel.clear();
 
         boolean isFirst = true;
+        boolean hasNewItem = false;
         for (final StackItemView item : safeItems) {
             final StackItemPanel panel = new StackItemPanel(item);
             stackPanel.addItem(panel, new StackTextRow(panel));
             if (!lastItemIds.contains(item.getId())) {
+                hasNewItem = true;
                 // Taken now, while the card is still in the hand it was cast from.
                 final Rectangle origin = flight.originOf(item.getSourceCard(), true);
                 if (origin != null) {
@@ -335,7 +338,15 @@ public class VStack implements IVDoc<CStack> {
         // Default the targeting arc to the item resolving next, as the list did.
         setHovered(stackPanel.items.isEmpty() ? null : stackPanel.items.get(0));
 
-        scroller.getVerticalScrollBar().setValue(0);
+        final JScrollBar bar = scroller.getVerticalScrollBar();
+        if (hasNewItem) {
+            // The newest item sits at the foot of the cascade, so follow it down.
+            // Deferred, because the scrollbar's range only covers the new item once
+            // the panel below has laid out again.
+            SwingUtilities.invokeLater(() -> bar.setValue(bar.getMaximum()));
+        } else {
+            bar.setValue(0);
+        }
         refreshLayout();
     }
 
