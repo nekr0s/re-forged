@@ -312,12 +312,10 @@ public class VStack implements IVDoc<CStack> {
         stackPanel.clear();
 
         boolean isFirst = true;
-        boolean hasNewItem = false;
         for (final StackItemView item : safeItems) {
             final StackItemPanel panel = new StackItemPanel(item);
             stackPanel.addItem(panel, new StackTextRow(panel));
             if (!lastItemIds.contains(item.getId())) {
-                hasNewItem = true;
                 // Taken now, while the card is still in the hand it was cast from.
                 final Rectangle origin = flight.originOf(item.getSourceCard(), true);
                 if (origin != null) {
@@ -338,15 +336,13 @@ public class VStack implements IVDoc<CStack> {
         // Default the targeting arc to the item resolving next, as the list did.
         setHovered(stackPanel.items.isEmpty() ? null : stackPanel.items.get(0));
 
+        // The foot of the cascade is where the action is — both the item that just
+        // arrived and the one about to resolve are down there — so every update
+        // ends up parked on it rather than on the oldest item. Deferred, because
+        // the scrollbar's range only reflects the new contents once the panel
+        // below has laid out again.
         final JScrollBar bar = scroller.getVerticalScrollBar();
-        if (hasNewItem) {
-            // The newest item sits at the foot of the cascade, so follow it down.
-            // Deferred, because the scrollbar's range only covers the new item once
-            // the panel below has laid out again.
-            SwingUtilities.invokeLater(() -> bar.setValue(bar.getMaximum()));
-        } else {
-            bar.setValue(0);
-        }
+        SwingUtilities.invokeLater(() -> bar.setValue(bar.getMaximum()));
         refreshLayout();
     }
 
