@@ -897,6 +897,7 @@ public abstract class LobbyScreen extends LaunchScreen implements ILobbyView {
                 panel.getPlayerName(),
                 panel.getAvatarIndex(),
                 panel.getSleeveIndex(),
+                null, // the mobile lobby has no mat picker, so leave the slot's mat alone
                 panel.getTeam(),
                 panel.isArchenemy(),
                 panel.isDevMode(),

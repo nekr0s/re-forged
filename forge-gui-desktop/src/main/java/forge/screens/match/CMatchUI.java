@@ -156,6 +156,7 @@ public final class CMatchUI
     private final CMatchUIMenus menus = new CMatchUIMenus(this);
     private final Map<EDocID, IVDoc<? extends ICDoc>> myDocs;
     private final TargetingOverlay targetingOverlay = new TargetingOverlay(this);
+    private final CardFlight cardFlight = new CardFlight(this);
 
     private FCollectionView<PlayerView> sortedPlayers;
     private final Map<String, String> avatarImages = new HashMap<>();
@@ -310,6 +311,7 @@ public final class CMatchUI
                     h.getLayoutControl().updateHand();
                 }
             });
+            refreshAwaitingActionHighlight();
         }
     }
 
@@ -337,6 +339,10 @@ public final class CMatchUI
     }
     public TargetingOverlay getTargetingOverlay() {
         return targetingOverlay;
+    }
+    /** Animates cards travelling between the zones this match shows. */
+    public CardFlight getCardFlight() {
+        return cardFlight;
     }
 
     /**
@@ -494,6 +500,10 @@ public final class CMatchUI
         cCombat.setModel(combat);
         cCombat.update();
 
+        // GameEventPlayerPriority reaches the GUI as a combat refresh, so this is
+        // the only hook that fires on every priority pass.
+        refreshAwaitingActionHighlight();
+
         // Combat pairings changed — rebuild layout so grouping reflects them
         if (!"default".equals(FModel.getPreferences().getPref(FPref.UI_GROUP_PERMANENTS))
                 || FModel.getPreferences().getPrefBoolean(FPref.UI_SEPARATE_COMBAT_STACKS)) {
@@ -508,6 +518,45 @@ public final class CMatchUI
     @Override
     public void updateDependencies() {
         cDependencies.update();
+    }
+
+    /**
+     * Outlines the field of whoever the game is waiting on to act.
+     * <p>
+     * Follows the same rule as the "Waiting for {0}..." prompt in
+     * {@code AbstractGuiGame.findWaitingForPlayerName}: the player holding
+     * priority, falling back to the turn player before priority is first handed
+     * out (mulligans, setup). Unlike the prompt this does not exclude the local
+     * player — when it's your action, your own field lights up.
+     */
+    private void refreshAwaitingActionHighlight() {
+        final GameView game = getGameView();
+        if (game == null || sortedPlayers == null || getFieldViews() == null) {
+            return;
+        }
+
+        PlayerView awaited = null;
+        if (game.getPlayers() != null) {
+            for (final PlayerView pv : game.getPlayers()) {
+                if (pv.getHasPriority()) {
+                    awaited = pv;
+                    break;
+                }
+            }
+        }
+        if (awaited == null) {
+            awaited = game.getPlayerTurn();
+        }
+
+        final PlayerView target = awaited;
+        FThreads.invokeInEdtNowOrLater(() -> {
+            for (final PlayerView pv : sortedPlayers) {
+                final VField f = getFieldViewFor(pv);
+                if (f != null) {
+                    f.setAwaitingAction(pv.equals(target));
+                }
+            }
+        });
     }
 
     @Override
@@ -882,6 +931,9 @@ public final class CMatchUI
             btn2.setEnabled(actualEnable2);
             btn1.setFocusable(actualEnable1 && actualFocus1);
             btn2.setFocusable(actualEnable2 && !actualFocus1);
+            // Show or hide the floating prompt before focusing, so the button
+            // being focused is already on screen.
+            getCPrompt().setInputRequired(actualEnable1 || actualEnable2);
             // ensure we don't steal focus from an overlay
             if (toFocus != null && !FNetOverlay.SINGLETON_INSTANCE.getTxtInput().hasFocus() ) {
                 toFocus.requestFocus(); // focus here even if another window has focus - shouldn't have to do it this way but some popups grab window focus
@@ -927,6 +979,8 @@ public final class CMatchUI
         if (openAbilityMenu != null) { //ensure ability menu can't remain open between phases
             openAbilityMenu.setVisible(false);
         }
+
+        refreshAwaitingActionHighlight();
     }
 
     @Override
@@ -935,6 +989,7 @@ public final class CMatchUI
         SDisplayUtil.showTab(nextField);
         cPrompt.updateText();
         repaintCardOverlays();
+        refreshAwaitingActionHighlight();
     }
 
     @Override
@@ -943,6 +998,9 @@ public final class CMatchUI
         FloatingZone.registerZoneDocs(this, getLocalPlayers());
         SLayoutIO.loadLayout(null);
         FloatingZone.pruneUnparentedDocks();
+        //loadLayout re-docks every registered doc, so pull the floating ones back out
+        getCPrompt().undockPrompt();
+        getCStack().undockStack();
         view.populate();
         final PlayerZoneUpdates zones = new PlayerZoneUpdates();
         for (final PlayerView p : sortedPlayers) {
@@ -964,6 +1022,8 @@ public final class CMatchUI
     @Override
     public void finishGame() {
         FloatingZone.closeAll(); //ensure floating card areas cleared and closed after the game
+        getCPrompt().closeFloatingPrompt();
+        getCStack().closeFloatingStack();
         if (isNetGame()) {
             writeMatchPreferences();
         }

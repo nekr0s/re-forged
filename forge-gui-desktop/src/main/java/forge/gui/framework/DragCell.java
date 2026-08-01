@@ -1,13 +1,18 @@
 package forge.gui.framework;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -33,6 +38,9 @@ import net.miginfocom.swing.MigLayout;
  */
 @SuppressWarnings("serial")
 public final class DragCell extends JPanel implements ILocalRepaint {
+    /** Thickness of the overridden cell outline. Docs must leave this much room at their edges. */
+    public static final int HIGHLIGHT_BORDER_T = 4;
+
     // Layout creation worker vars
     private RectangleOfDouble roughSize;
     private int smoothX = 0;
@@ -53,6 +61,7 @@ public final class DragCell extends JPanel implements ILocalRepaint {
     private final JLabel lblHandle = new DragHandle();
     private final JLabel lblOverflow = new JLabel();
     private IVDoc<? extends ICDoc> docSelected = null;
+    private Color borderOverride = null;
 
     public DragCell() {
         super(new MigLayout("insets 0, gap 0, wrap 2"));
@@ -124,6 +133,37 @@ public final class DragCell extends JPanel implements ILocalRepaint {
     /** @return {@link javax.swing.JPanel} */
     public JPanel getBody() {
         return DragCell.this.pnlBody;
+    }
+
+    /**
+     * Outlines the whole cell — body and tabs — in a fixed colour instead of the
+     * skin one. <b>null</b> restores the skin colour.
+     */
+    public void setBorderOverride(final Color clr0) {
+        if (Objects.equals(borderOverride, clr0)) { return; }
+        borderOverride = clr0;
+        for (final IVDoc<? extends ICDoc> doc : allDocs) {
+            doc.getTabLabel().setBorderOverride(clr0);
+        }
+        repaintSelf();
+    }
+
+    @Override
+    protected void paintChildren(final Graphics g) {
+        super.paintChildren(g);
+        if (borderOverride == null) { return; }
+
+        // Drawn after the children rather than by pnlBody itself: a doc's content
+        // fills the body edge to edge (the player mat even draws its own light
+        // edge there), so a border painted underneath is simply covered up.
+        final Graphics2D g2d = (Graphics2D) g.create();
+        final Rectangle r = pnlBody.getBounds();
+        final float inset = HIGHLIGHT_BORDER_T / 2f;
+        g2d.setColor(borderOverride);
+        g2d.setStroke(new BasicStroke(HIGHLIGHT_BORDER_T));
+        g2d.draw(new Rectangle2D.Float(r.x + inset, r.y + inset,
+                r.width - HIGHLIGHT_BORDER_T, r.height - HIGHLIGHT_BORDER_T));
+        g2d.dispose();
     }
 
     /** @return {@link javax.swing.JPanel} */
@@ -269,6 +309,7 @@ public final class DragCell extends JPanel implements ILocalRepaint {
         if (doc0 instanceof VEmptyDoc) { return; }
         allDocs.add(doc0);
         doc0.setParentCell(this);
+        doc0.getTabLabel().setBorderOverride(borderOverride);
         pnlHead.add(doc0.getTabLabel(), "h 100%!, gap " + tabPaddingPx + "px " + tabPaddingPx + "px 0 0", allDocs.size() - 1);
 
         // Ensure that a tab is selected

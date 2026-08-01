@@ -155,7 +155,14 @@ public class VMatchUI implements IVTopLevelUI {
             }
         } else if (vDev.getParentCell() == null) {
             // Dev mode enabled? May already by added, or put in message cell by default.
-            getControl().getCPrompt().getView().getParentCell().addDoc(vDev);
+            // The prompt is undocked into a floating window, so fall back to the log's cell.
+            DragCell devCell = getControl().getCPrompt().getView().getParentCell();
+            if (devCell == null) {
+                devCell = EDocID.REPORT_LOG.getDoc().getParentCell();
+            }
+            if (devCell != null) {
+                devCell.addDoc(vDev);
+            }
         }
 
         //focus first enabled Prompt button if returning to match screen

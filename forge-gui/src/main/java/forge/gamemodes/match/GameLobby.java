@@ -6,6 +6,7 @@ import com.google.common.primitives.Ints;
 import org.apache.commons.lang3.StringUtils;
 
 import forge.LobbyPlayer;
+import forge.PlayerMat;
 import forge.ai.AIOption;
 import forge.deck.CardPool;
 import forge.deck.Deck;
@@ -168,7 +169,9 @@ public abstract class GameLobby implements IHasGameType {
     public void addSlot() {
         final int newIndex = getNumberOfSlots();
         final LobbySlotType type = isAllowNetworking() ? LobbySlotType.OPEN : LobbySlotType.AI;
-        addSlot(new LobbySlot(type, null, newIndex, newIndex, newIndex, false, !isAllowNetworking(), Collections.emptySet()));
+        final LobbySlot slot = new LobbySlot(type, null, newIndex, newIndex, newIndex, false, !isAllowNetworking(), Collections.emptySet());
+        slot.setMatKey(localMatKey(newIndex));
+        addSlot(slot);
     }
     protected final void addSlot(final LobbySlot slot) {
         if (slot == null) {
@@ -207,6 +210,14 @@ public abstract class GameLobby implements IHasGameType {
             result[i] = val == null ? -1 : val;
         }
         return result;
+    }
+    /** This machine's saved mat choice for the given seat, falling back to the default. */
+    public final static String localMatKey(final int index) {
+        final String[] keys = FModel.getPreferences().getPref(FPref.UI_PLAYER_MATS).split(",");
+        if (index < 0 || index >= keys.length || keys[index].trim().isEmpty()) {
+            return PlayerMat.DEFAULT_KEY;
+        }
+        return keys[index].trim();
     }
     protected final static int[] localSleeveIndices() {
         final String[] sSleeves = FModel.getPreferences().getPref(FPref.UI_SLEEVES).split(",");
@@ -464,6 +475,7 @@ public abstract class GameLobby implements IHasGameType {
                 }
                 lobbyPlayer = GamePlayerUtil.getGuiPlayer(name, avatar, sleeve, setNameNow);
             }
+            lobbyPlayer.setMatKey(slot.getMatKey());
             final Deck slotDeck = slot.getDeck();
             lobbyPlayer.setSleeveArtKey(slotDeck == null ? "" : slotDeck.getSleeveArtKey());
             lobbyPlayer.setSleeveArtOffset(slotDeck == null ? Deck.DEFAULT_SLEEVE_OFFSET : slotDeck.getSleeveArtOffset());

@@ -18,7 +18,7 @@ public class LobbySlotAuthorizationTest {
     @Test
     public void testClearsOnlyServerOwnedFields() {
         final UpdateLobbyPlayerEvent forged = UpdateLobbyPlayerEvent.create(
-                LobbySlotType.OPEN, "Mallory", 3, 4, 1, true, true,
+                LobbySlotType.OPEN, "Mallory", 3, 4, "OCEAN", 1, true, true,
                 Collections.emptySet(), "ai-profile");
 
         Assert.assertTrue(forged.clearServerOwnedFields(), "Server-owned fields were present");
@@ -29,6 +29,7 @@ public class LobbySlotAuthorizationTest {
         // including isDevMode and isArchenemy, which are gated on mayEdit() and
         // are deliberately left alone.
         Assert.assertEquals(forged.getName(), "Mallory");
+        Assert.assertEquals(forged.getMatKey(), "OCEAN");
         Assert.assertEquals(forged.getTeam(), Integer.valueOf(1));
         Assert.assertEquals(forged.getDevMode(), Boolean.TRUE);
         Assert.assertEquals(forged.getArchenemy(), Boolean.TRUE);

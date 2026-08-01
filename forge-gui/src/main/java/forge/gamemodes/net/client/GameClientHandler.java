@@ -3,6 +3,7 @@ package forge.gamemodes.net.client;
 import forge.game.*;
 import forge.game.card.CardView;
 import forge.game.player.PlayerView;
+import forge.gamemodes.match.GameLobby;
 import forge.gamemodes.net.CompatibleObjectDecoder;
 import forge.gamemodes.net.CompatibleObjectEncoder;
 import forge.gamemodes.net.GameProtocolHandler;
@@ -229,6 +230,7 @@ final class GameClientHandler extends GameProtocolHandler<IGuiGame> implements I
                 loginName,
                 Integer.parseInt(FModel.getPreferences().getPref(FPref.UI_AVATARS).split(",")[0]),
                 Integer.parseInt(FModel.getPreferences().getPref(FPref.UI_SLEEVES).split(",")[0]),
+                GameLobby.localMatKey(0),
                 BuildInfo.getVersionString(),
                 GuiBase.getInterface().isLibgdxPort()
         ));
