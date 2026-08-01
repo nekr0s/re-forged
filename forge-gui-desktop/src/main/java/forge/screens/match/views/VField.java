@@ -27,6 +27,7 @@ import javax.swing.SwingConstants;
 import javax.swing.border.Border;
 import javax.swing.border.LineBorder;
 
+import forge.PlayerMat;
 import forge.deck.CommanderBracketCalculator;
 import forge.deck.Deck;
 import forge.game.GameType;
@@ -60,6 +61,9 @@ public class VField implements IVDoc<CField> {
     private final static int LIFE_CRITICAL = 5;
     private final static int POISON_CRITICAL = 8;
 
+    /** Outline colour for the field of whoever the game is currently waiting on. */
+    private final static Color CLR_AWAITING_ACTION = new Color(0xFB, 0x94, 0x49);
+
     // Fields used with interface IVDoc
     private final CField control;
     private DragCell parentCell;
@@ -74,6 +78,7 @@ public class VField implements IVDoc<CField> {
 
     // Top-level containers
     private final FScrollPane scroller = new FScrollPane(false);
+    private final PlayerMatPanel matPanel = new PlayerMatPanel();
     private final PlayArea tabletop;
     private final SkinnedPanel avatarArea = new SkinnedPanel();
 
@@ -94,6 +99,8 @@ public class VField implements IVDoc<CField> {
     private final Border borderAvatarHighlighted = new LineBorder(Color.red, 2);
 
     private final TabDiffTracker tabDiff = new TabDiffTracker();
+
+    private boolean awaitingAction = false;
 
 
     //========= Constructor
@@ -157,6 +164,12 @@ public class VField implements IVDoc<CField> {
 
         scroller.setViewportView(this.tabletop);
 
+        // The scroll pane and its viewport are transparent, so the mat behind
+        // them shows through under the cards.
+        matPanel.setLayout(new MigLayout("insets 0, gap 0, fill"));
+        matPanel.add(scroller, "grow, push");
+        updateMat();
+
         updateDetails();
     }
 
@@ -165,10 +178,35 @@ public class VField implements IVDoc<CField> {
         final JPanel pnl = parentCell.getBody();
         pnl.setLayout(new MigLayout("insets 0, gap 0"));
 
-        pnl.add(avatarArea, "w 10%!, h 35%!");
+        // Keep the left column clear of the awaiting-action outline: it is drawn over
+        // the body, and the details rows there carry numbers worth not clipping. The
+        // right and bottom edges only meet the mat, which is happy to be drawn on.
+        final int edge = DragCell.HIGHLIGHT_BORDER_T;
+        pnl.add(avatarArea, "w 10%-" + edge + "px!, h 35%!, gapleft " + edge + "px");
         pnl.add(phaseIndicator, "w 5%!, h 100%!, span 1 2");
-        pnl.add(scroller, "w 85%!, h 100%!, span 1 2, wrap");
-        pnl.add(detailsPanel, "w 10%!, h 64%!, gapleft 1px");
+        pnl.add(matPanel, "w 85%!, h 100%!, span 1 2, wrap");
+        pnl.add(detailsPanel, "w 10%-" + edge + "px!, h 64%!, gapleft " + edge + "px");
+
+        applyAwaitingActionBorder();
+    }
+
+    /** Tints this field's whole cell outline while the game is waiting on its player to act. */
+    public void setAwaitingAction(final boolean awaiting) {
+        if (awaiting == awaitingAction) { return; }
+        awaitingAction = awaiting;
+        applyAwaitingActionBorder();
+    }
+
+    private void applyAwaitingActionBorder() {
+        if (parentCell != null) {
+            parentCell.setBorderOverride(awaitingAction ? CLR_AWAITING_ACTION : null);
+        }
+    }
+
+    /** Re-reads this player's chosen mat and repaints the play surface. */
+    public void updateMat() {
+        matPanel.setMat(player == null
+                ? PlayerMat.SLATE : PlayerMat.fromKeyOrDefault(player.getMatKey()));
     }
 
     @Override
@@ -336,6 +374,10 @@ public class VField implements IVDoc<CField> {
     }
 
     public void updateDetails() {
+        // The mat key arrives with the player view, which may land after this
+        // field was constructed, so re-read it on refresh.
+        updateMat();
+
         // Update life total
         final int life = player.getLife();
         lblLife.setText(String.valueOf(life));

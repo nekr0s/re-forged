@@ -420,6 +420,7 @@ public class VLobby implements ILobbyView {
                 panel.setSleeve(slot.getSleeveIndex(),
                         slotDeck == null ? "" : slotDeck.getSleeveArtKey(),
                         slotDeck == null ? Deck.DEFAULT_SLEEVE_OFFSET : slotDeck.getSleeveArtOffset());
+                panel.setMatKey(slot.getMatKey());
                 panel.setTeam(slot.getTeam());
                 panel.setIsReady(slot.isReady());
                 panel.setIsDevMode(slot.isDevMode());
@@ -586,7 +587,7 @@ public class VLobby implements ILobbyView {
         final PlayerPanel panel = getPlayerPanel(index);
         return UpdateLobbyPlayerEvent.create(panel.getType(),
                 panel.getPlayerName(),
-                panel.getAvatarIndex(), panel.getSleeveIndex(),
+                panel.getAvatarIndex(), panel.getSleeveIndex(), panel.getMatKey(),
                 panel.getTeam(), panel.isArchenemy(),
                 panel.isDevMode(),
                 panel.getAiOptions(),

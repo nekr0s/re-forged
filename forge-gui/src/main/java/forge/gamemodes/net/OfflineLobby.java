@@ -15,6 +15,7 @@ public final class OfflineLobby extends GameLobby {
         final int[] sleeveIndices = localSleeveIndices();
 
         final LobbySlot slot0 = new LobbySlot(LobbySlotType.LOCAL, humanName, avatarIndices[0], sleeveIndices[0], 0, true, false, Collections.emptySet());
+        slot0.setMatKey(localMatKey(0));
         addSlot(slot0);
 
         final LobbySlot slot1 = new LobbySlot(LobbySlotType.OPEN, null, -1, -1,-1, false, false, Collections.emptySet());

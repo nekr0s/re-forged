@@ -1025,7 +1025,11 @@ public class PlayArea extends CardPanelContainer implements CardPanelMouseListen
                 if ( --i == 0 ) { // only scroll to last panel to be added
                     scrollRectToVisible(new Rectangle(toPanel.getCardX(), toPanel.getCardY(), toPanel.getCardWidth(), toPanel.getCardHeight()));
                 }
-                Animation.moveCard(toPanel);
+                // Fly the card in from wherever it was last shown; if it wasn't shown
+                // anywhere the player could see, it just appears, as it always did.
+                if (!getMatchUI().getCardFlight().flyInto(toPanel)) {
+                    Animation.moveCard(toPanel);
+                }
             }
         }
         repaint();

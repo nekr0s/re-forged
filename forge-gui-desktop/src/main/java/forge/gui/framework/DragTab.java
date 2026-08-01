@@ -1,8 +1,12 @@
 package forge.gui.framework;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Stroke;
+import java.util.Objects;
 
 import javax.swing.border.EmptyBorder;
 
@@ -19,6 +23,7 @@ public final class DragTab extends SkinnedLabel implements ILocalRepaint {
     private boolean selected = false;
     private int priority = 10;
     private float flashIntensity = 0f;
+    private Color borderOverride = null;
 
     /**
      * The tab label object in drag layout.
@@ -74,6 +79,13 @@ public final class DragTab extends SkinnedLabel implements ILocalRepaint {
         // Intentionally empty.
     }
 
+    /** Outlines the tab in a fixed colour instead of the skin one; null restores the skin colour. */
+    public void setBorderOverride(final Color clr0) {
+        if (Objects.equals(borderOverride, clr0)) { return; }
+        borderOverride = clr0;
+        repaintSelf();
+    }
+
     /** Sets the red flash overlay intensity (0..1) and repaints. */
     public void setFlashIntensity(final float intensity) {
         flashIntensity = Math.max(0f, Math.min(1f, intensity));
@@ -88,18 +100,9 @@ public final class DragTab extends SkinnedLabel implements ILocalRepaint {
 
     @Override
     public void paintComponent(final Graphics g) {
-        if (!selected) {
-            FSkin.setGraphicsColor(g, FSkin.getColor(FSkin.Colors.CLR_INACTIVE));
-            g.fillRoundRect(0, 0, getWidth() - 1, getHeight() * 2, 6, 6);
-            FSkin.setGraphicsColor(g, FSkin.getColor(FSkin.Colors.CLR_BORDERS));
-            g.drawRoundRect(0, 0, getWidth() - 1, getHeight() * 2, 6, 6);
-        }
-        else {
-            FSkin.setGraphicsColor(g, FSkin.getColor(FSkin.Colors.CLR_ACTIVE));
-            g.fillRoundRect(0, 0, getWidth() - 1, getHeight() * 2, 6, 6);
-            FSkin.setGraphicsColor(g, FSkin.getColor(FSkin.Colors.CLR_BORDERS));
-            g.drawRoundRect(0, 0, getWidth() - 1, getHeight() * 2, 6, 6);
-        }
+        FSkin.setGraphicsColor(g, FSkin.getColor(selected ? FSkin.Colors.CLR_ACTIVE : FSkin.Colors.CLR_INACTIVE));
+        g.fillRoundRect(0, 0, getWidth() - 1, getHeight() * 2, 6, 6);
+        drawTabBorder(g);
 
         if (flashIntensity > 0f) {
             g.setColor(new Color(1f, 0f, 0f, flashIntensity));
@@ -107,5 +110,23 @@ public final class DragTab extends SkinnedLabel implements ILocalRepaint {
         }
 
         super.paintComponent(g);
+    }
+
+    private void drawTabBorder(final Graphics g) {
+        if (borderOverride == null) {
+            FSkin.setGraphicsColor(g, FSkin.getColor(FSkin.Colors.CLR_BORDERS));
+            g.drawRoundRect(0, 0, getWidth() - 1, getHeight() * 2, 6, 6);
+            return;
+        }
+
+        // Inset by half the stroke so it lands entirely inside the tab, and restore the
+        // stroke afterwards since the label text is painted with the same Graphics.
+        final Graphics2D g2d = (Graphics2D) g;
+        final Stroke oldStroke = g2d.getStroke();
+        final int inset = DragCell.HIGHLIGHT_BORDER_T / 2;
+        g2d.setColor(borderOverride);
+        g2d.setStroke(new BasicStroke(DragCell.HIGHLIGHT_BORDER_T));
+        g2d.drawRoundRect(inset, inset, getWidth() - 1 - DragCell.HIGHLIGHT_BORDER_T, getHeight() * 2, 6, 6);
+        g2d.setStroke(oldStroke);
     }
 }

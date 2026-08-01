@@ -38,6 +38,7 @@ import forge.gui.framework.ICDoc;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 import forge.screens.match.CMatchUI;
+import forge.screens.match.CardFlight;
 import forge.screens.match.views.VField;
 import forge.screens.match.views.VHand;
 import forge.view.arcane.CardPanel;
@@ -125,6 +126,15 @@ public class CHand implements ICDoc {
                 cardPanel.setCard(card); //ensure card view is updated
             }
             cardPanels.add(cardPanel);
+        }
+
+        // A card that has left the hand is on its way to the stack or the battlefield,
+        // which may redraw after this does; note where it was so it can fly from there.
+        for (final CardPanel leaving : p.getCardPanels()) {
+            if (!cardPanels.contains(leaving)) {
+                matchUI.getCardFlight().recordDeparture(leaving.getCard(),
+                        CardFlight.screenBoundsOf(leaving));
+            }
         }
 
         p.setCardPanels(cardPanels);
