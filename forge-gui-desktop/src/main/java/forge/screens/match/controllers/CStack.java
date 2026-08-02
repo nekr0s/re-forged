@@ -48,16 +48,11 @@ public class CStack implements ICDoc {
 
     /**
      * Called when the stack view itself changes shape — opening or closing the
-     * text list. Widens the window by the same amount, or re-packs it if the
-     * user hasn't taken over its size.
+     * text list, the only thing that changes the window's size.
      */
-    public void stackLayoutChanged(final int widthDelta) {
+    public void stackLayoutChanged() {
         if (floatingStack == null) { return; }
-        if (floatingStack.isUserSized()) {
-            floatingStack.grow(widthDelta);
-        } else {
-            floatingStack.sizeToContent();
-        }
+        floatingStack.sizeToContent();
     }
 
     /**
@@ -113,7 +108,6 @@ public class CStack implements ICDoc {
             return;
         }
         final FloatingStack window = getFloatingStack();
-        view.setFitToContainer(window.isUserSized());
         view.updateStack();
         window.sizeToContent();
         window.setVisible(true);

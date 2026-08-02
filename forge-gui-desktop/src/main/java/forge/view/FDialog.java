@@ -372,6 +372,8 @@ public class FDialog extends SkinnedDialog implements ITitleBarOwner, KeyEventDi
         resizeBorders.addMouseMotionListener(new MouseMotionAdapter() {
             @Override
             public void mouseMoved(final MouseEvent e) {
+                //no grab cursor, so no resize can start, on a window that turned it off
+                if (!isResizable()) { return; }
                 if (mouseDownLoc == null) {
                     final int grabArea = borderThickness * 2;
                     final Point loc = e.getPoint();
