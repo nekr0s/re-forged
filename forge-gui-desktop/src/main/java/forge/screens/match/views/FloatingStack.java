@@ -17,8 +17,11 @@
  */
 package forge.screens.match.views;
 
-import java.awt.Dimension;
+import java.awt.Color;
 import java.awt.Rectangle;
+
+import javax.swing.BorderFactory;
+import javax.swing.border.CompoundBorder;
 
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.util.Localizer;
@@ -26,6 +29,11 @@ import forge.util.Localizer;
 /**
  * The window the stack is shown in, floating over the board. Sized to whatever
  * is on the stack at the moment, and hidden entirely when the stack is empty.
+ * <p>
+ * Deliberately not resizable: the cards are drawn at one fixed size, so there
+ * is nothing a drag could usefully change. The only thing that alters the
+ * window's size is opening or closing the text list, which it makes room for
+ * itself and gives back again.
  */
 @SuppressWarnings("serial")
 public class FloatingStack extends FloatingMatchWindow {
@@ -35,38 +43,37 @@ public class FloatingStack extends FloatingMatchWindow {
      * {@link FloatingPrompt}, since both are usually up at the same time.
      */
     private static final float DEFAULT_BOTTOM_FRACTION = 0.42f;
+    /** Matches the border {@link forge.view.FDialog} gives a resizable window. */
+    private static final int BORDER_THICKNESS = 3;
 
     public FloatingStack() {
         super(FPref.STACK_WINDOW_LOC, true);
         setTitle(Localizer.getInstance().getMessage("lblStack"));
-        setMinimumSize(new Dimension(120, 160));
+        setResizable(false);
         // The stack is read-only, so it must never take focus away from the
         // prompt's buttons, which are driven by the keyboard.
         setFocusableWindowState(false);
+        // Same border the prompt wears, so the two windows the game floats over
+        // the board read as a pair.
+        setBorder(new CompoundBorder(
+                BorderFactory.createLineBorder(Color.BLACK, 1),
+                BorderFactory.createLineBorder(VPrompt.ACCENT, BORDER_THICKNESS - 1)));
     }
 
-    /**
-     * Fits the window to the current stack. Does nothing once the user has
-     * sized it themselves — from then on the cascade fits the window instead.
-     */
+    /** Fits the window to the current stack, leaving it wherever the user put it. */
     public void sizeToContent() {
-        if (isUserSized()) { return; }
         reposition(() -> {
             pack();
-            placeByDefault();
+            if (!isUserPlaced()) {
+                placeByDefault();
+            }
         });
     }
 
-    /** True once the window has a size the user chose. */
-    public boolean isUserSized() {
-        return isUserPlaced();
-    }
-
-    /** Widens the window to make room for content that just appeared. */
-    public void grow(final int widthDelta) {
-        reposition(() -> setSize(
-                Math.max(getMinimumSize().width, getWidth() + widthDelta), getHeight()));
-        validate();
+    /** Only the position is the user's to choose; the size always follows the contents. */
+    @Override
+    protected boolean restoresSize() {
+        return false;
     }
 
     @Override

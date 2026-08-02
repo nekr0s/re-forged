@@ -19,12 +19,11 @@ package forge.screens.match.views;
 
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Cursor;
 import java.awt.Dimension;
-import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
@@ -46,7 +45,6 @@ import javax.swing.JScrollBar;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
-import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 
 import forge.CachedCardImage;
@@ -69,6 +67,7 @@ import forge.player.AutoYieldStore.TriggerDecision;
 import forge.screens.match.CardFlight;
 import forge.screens.match.controllers.CDock.ArcState;
 import forge.screens.match.controllers.CStack;
+import forge.toolbox.FButton;
 import forge.toolbox.FLabel;
 import forge.toolbox.FMouseAdapter;
 import forge.toolbox.FScrollPane;
@@ -88,27 +87,28 @@ public class VStack implements IVDoc<CStack> {
 
     /** Height of the strip naming the player who put the item on the stack. */
     private static final int HEADER_HEIGHT = 17;
-    /** Card width used when the cascade is free to pick its own size. */
-    private static final int BASE_CARD_WIDTH = 210;
-    /** Height a full-size card is drawn at, and the half of it the cascade never shrinks past. */
-    private static final int BASE_CARD_HEIGHT = Math.round(BASE_CARD_WIDTH * CardPanel.ASPECT_RATIO);
-    private static final int MIN_CARD_HEIGHT = BASE_CARD_HEIGHT / 2;
+    /**
+     * The one size every card in the cascade is drawn at. Fixed on purpose: a
+     * cascade that resized with its window made the cards jump about, so a stack
+     * too tall for the screen scrolls instead of shrinking.
+     */
+    private static final int CARD_WIDTH = 245;
+    private static final int CARD_HEIGHT = Math.round(CARD_WIDTH * CardPanel.ASPECT_RATIO);
     /** Fraction of a card left uncovered by the item cascaded over it. */
     private static final float PEEK = 0.12f;
+    /** How far down the cascade each item sits from the one before it. */
+    private static final int STEP = HEADER_HEIGHT + Math.round(CARD_HEIGHT * PEEK);
     /** Share of the screen height a window sizing itself to the stack stops growing at. */
     private static final float MAX_HEIGHT_FRACTION = 0.72f;
-    /** Smallest width the text column is given, and how much wider the window gets when it opens. */
+    /** Smallest width the text column is given. */
     private static final int TEXT_PANEL_WIDTH = 250;
     /** Space between the cascade and the text column. */
     private static final int COLUMN_GAP = 6;
     /** Size of the title-bar control that opens the text view. */
     private static final int TOGGLE_SIZE = 21;
-    /** Settling time before card images are re-fetched at a new size. */
-    private static final int IMAGE_REFRESH_DELAY_MS = 250;
     /** One layer of the drop shadow under an expanded text row. */
     private static final Color SHADOW_TINT = new Color(0, 0, 0, 40);
-    /** Accent colour and height of the button that lets the whole stack resolve. */
-    private static final Color RESOLVE_COLOR = new Color(0xFB, 0x94, 0x49);
+    /** Height of the buttons that hand priority back to the game. */
     private static final int RESOLVE_HEIGHT = 26;
 
     // Fields used with interface IVDoc
@@ -131,14 +131,13 @@ public class VStack implements IVDoc<CStack> {
         }
     };
     private final FLabel btnToggleText;
-    private final ResolveButton btnResolveTop =
-            new ResolveButton("lblResolveTopOfStack", this::resolveTopOfStack);
-    private final ResolveButton btnResolveAll =
-            new ResolveButton("lblYieldToEntireStack", this::resolveEntireStack);
+    private final FButton btnResolveTop =
+            new FButton(Localizer.getInstance().getMessage("lblResolveTopOfStack"));
+    private final FButton btnResolveAll =
+            new FButton(Localizer.getInstance().getMessage("lblYieldToEntireStack"));
 
     // Other fields
     private final AbilityMenu abilityMenu = new AbilityMenu();
-    private final Timer imageRefreshTimer;
 
     /** Ids of the items the stack showed last update, so the new arrivals stand out. */
     private final Set<Integer> lastItemIds = new HashSet<>();
@@ -159,8 +158,6 @@ public class VStack implements IVDoc<CStack> {
     private StackItemPanel raisedItem;
     /** Whether the text column is open. */
     private boolean showText;
-    /** True once the window is a size the user chose, so the cascade has to fit it. */
-    private boolean fitToContainer;
 
     public StackItemPanel getHoveredItem() {
         return hoveredItem;
@@ -179,13 +176,17 @@ public class VStack implements IVDoc<CStack> {
                 .build();
         btnToggleText.setPreferredSize(new Dimension(TOGGLE_SIZE, TOGGLE_SIZE));
 
-        imageRefreshTimer = new Timer(IMAGE_REFRESH_DELAY_MS, e -> {
-            for (final StackItemPanel panel : stackPanel.items) {
-                panel.refreshImage();
-            }
-            stackPanel.repaint();
-        });
-        imageRefreshTimer.setRepeats(false);
+        //same buttons the prompt uses, in the same accent colour
+        for (final FButton btn : new FButton[] { btnResolveTop, btnResolveAll }) {
+            btn.setTint(VPrompt.ACCENT);
+            btn.setFont(FSkin.getBoldFont(12));
+            btn.setMargin(new Insets(0, 6, 0, 6)); //the stack is narrower than the prompt
+        }
+        btnResolveTop.setCommand((UiCommand) this::resolveTopOfStack);
+        btnResolveAll.setCommand((UiCommand) this::resolveEntireStack);
+
+        //one notch of the wheel uncovers one more card
+        scroller.getVerticalScrollBar().setUnitIncrement(STEP);
     }
 
     @Override
@@ -202,8 +203,10 @@ public class VStack implements IVDoc<CStack> {
         container.setLayout(new MigLayout("insets 0, gap 0"));
         //one scroll pane over both columns, so the cards and their text scroll together
         container.add(scroller, "cell 0 0, grow, push");
-        container.add(btnResolveTop, "cell 0 1, growx, gaptop 4, w 50%, h " + RESOLVE_HEIGHT + "!, split 2");
-        container.add(btnResolveAll, "growx, gapleft 4, w 50%, h " + RESOLVE_HEIGHT + "!");
+        //no fixed share of the width: both labels are set, so each button keeps the
+        //room its own text needs and they split whatever the cascade leaves over
+        container.add(btnResolveTop, "cell 0 1, growx, gaptop 4, h " + RESOLVE_HEIGHT + "!, split 2");
+        container.add(btnResolveAll, "growx, gapleft 4, h " + RESOLVE_HEIGHT + "!");
     }
 
     /** The title-bar control that opens and closes the text view. */
@@ -215,8 +218,7 @@ public class VStack implements IVDoc<CStack> {
     private void toggleTextList() {
         showText = !showText;
         refreshLayout();
-        final int width = TEXT_PANEL_WIDTH + COLUMN_GAP;
-        controller.stackLayoutChanged(showText ? width : -width);
+        controller.stackLayoutChanged();
     }
 
     /** How tall the cascade may make a window that is sizing itself to the stack. */
@@ -245,14 +247,6 @@ public class VStack implements IVDoc<CStack> {
         stackPanel.arrange();
         stackPanel.revalidate();
         stackPanel.repaint();
-    }
-
-    /**
-     * Whether the cascade has to fit the container it's in, rather than sizing
-     * itself. Set once the window is a size the user picked.
-     */
-    public void setFitToContainer(final boolean fitToContainer0) {
-        fitToContainer = fitToContainer0;
     }
 
     @Override
@@ -421,10 +415,6 @@ public class VStack implements IVDoc<CStack> {
         /** The text of each item, in the same order. */
         private final List<StackTextRow> rows = new ArrayList<>();
 
-        private int cardWidth = BASE_CARD_WIDTH;
-        private int cardHeight = Math.round(BASE_CARD_WIDTH * CardPanel.ASPECT_RATIO);
-        private int step = HEADER_HEIGHT;
-
         StackPanel() {
             setLayout(null); //items are positioned by hand, and deliberately overlap
             setOpaque(false);
@@ -468,23 +458,7 @@ public class VStack implements IVDoc<CStack> {
             }
 
             final int availWidth = getWidth();
-            final int availHeight = fitToContainer ? scroller.getViewport().getHeight() : maxCascadeHeight();
-
-            // Card size follows the height on offer and nothing else — not the width,
-            // and not how many items there are. Both of those made the cards jump about:
-            // opening the text list or showing the scrollbar changes the width, and
-            // counting the items meant every spell cast shrank the ones already there.
-            int height = BASE_CARD_HEIGHT;
-            if (availHeight > 0) {
-                height = Math.min(height, availHeight - HEADER_HEIGHT); //room for one whole card
-            }
-            // Below half size the cards stop shrinking; past that the cascade scrolls.
-            cardHeight = Math.max(MIN_CARD_HEIGHT, height);
-            cardWidth = Math.round(cardHeight / CardPanel.ASPECT_RATIO);
-
-            final int itemHeight = HEADER_HEIGHT + cardHeight;
-            step = HEADER_HEIGHT + Math.round(cardHeight * PEEK);
-            final int totalHeight = (count - 1) * step + itemHeight;
+            final int totalHeight = (count - 1) * STEP + HEADER_HEIGHT + CARD_HEIGHT;
 
             // The top of the stack sits lowest, where nothing covers it. Cards that
             // gave up their name strip give up the space for it too, so the ones above
@@ -492,11 +466,11 @@ public class VStack implements IVDoc<CStack> {
             final int[] tops = new int[count];
             for (int i = 0; i < count; i++) {
                 final StackItemPanel panel = items.get(i);
-                tops[i] = (count - 1 - i) * step + HEADER_HEIGHT - panel.headerHeight();
-                panel.setBounds(0, tops[i], cardWidth, panel.headerHeight() + cardHeight);
+                tops[i] = (count - 1 - i) * STEP + HEADER_HEIGHT - panel.headerHeight();
+                panel.setBounds(0, tops[i], CARD_WIDTH, panel.headerHeight() + CARD_HEIGHT);
             }
 
-            final int textX = cardWidth + COLUMN_GAP;
+            final int textX = CARD_WIDTH + COLUMN_GAP;
             final int textWidth = Math.max(TEXT_PANEL_WIDTH, availWidth - textX);
             for (int i = 0; i < count; i++) {
                 final StackTextRow row = rows.get(i);
@@ -519,16 +493,9 @@ public class VStack implements IVDoc<CStack> {
             }
             arrangeZOrder();
 
-            final Dimension preferred = new Dimension(showText ? textX + textWidth : cardWidth, totalHeight);
+            final Dimension preferred = new Dimension(showText ? textX + textWidth : CARD_WIDTH, totalHeight);
             if (!preferred.equals(getPreferredSize())) {
                 setPreferredSize(preferred); //re-runs layout once, then settles
-            }
-            if (items.get(0).needsImageRefresh(cardWidth, cardHeight)) {
-                imageRefreshTimer.restart(); //wait for a drag-resize to settle before re-fetching
-            }
-            //one notch of the wheel uncovers one more card; FScrollPane's own value would win otherwise
-            if (scroller.getVerticalScrollBar().getUnitIncrement() != step) {
-                scroller.getVerticalScrollBar().setUnitIncrement(step);
             }
         }
 
@@ -557,12 +524,12 @@ public class VStack implements IVDoc<CStack> {
 
         @Override
         public int getScrollableUnitIncrement(final Rectangle visible, final int orientation, final int direction) {
-            return step;
+            return STEP;
         }
 
         @Override
         public int getScrollableBlockIncrement(final Rectangle visible, final int orientation, final int direction) {
-            return Math.max(step, visible.height - step);
+            return Math.max(STEP, visible.height - STEP);
         }
 
         /** Both columns are laid out to the width on offer, so there is nothing to scroll sideways. */
@@ -587,8 +554,6 @@ public class VStack implements IVDoc<CStack> {
         private boolean showHeaderText = true;
 
         private CachedCardImage cachedImage;
-        private int imageWidth;
-        private int imageHeight;
 
         public StackItemView getItem() {
             return item;
@@ -666,18 +631,11 @@ public class VStack implements IVDoc<CStack> {
             });
         }
 
-        /** True once the panel has been resized far enough to be worth re-fetching the image. */
-        boolean needsImageRefresh(final int cardWidth, final int cardHeight) {
-            return cachedImage == null || imageWidth != cardWidth || imageHeight != cardHeight;
-        }
-
-        /** Re-requests the card image at the size the panel now draws it at. */
+        /** Requests the card image at the one size the cascade draws it at. */
         void refreshImage() {
-            imageWidth = stackPanel.cardWidth;
-            imageHeight = stackPanel.cardHeight;
             final float screenScale = GuiBase.getInterface().getScreenScale();
             cachedImage = new CachedCardImage(item.getSourceCard(), controller.getMatchUI().getLocalPlayers(),
-                    Math.round(imageWidth * screenScale), Math.round(imageHeight * screenScale)) {
+                    Math.round(CARD_WIDTH * screenScale), Math.round(CARD_HEIGHT * screenScale)) {
                 @Override
                 public void onImageFetched() {
                     repaint();
@@ -757,60 +715,6 @@ public class VStack implements IVDoc<CStack> {
                 g2d.drawRoundRect(0, 0, cardWidth - 1, getHeight() - 1, cornerSize, cornerSize);
             }
 
-            g2d.dispose();
-        }
-    }
-
-    /** One of the buttons under the cascade that hand priority back to the game. */
-    @SuppressWarnings("serial")
-    private class ResolveButton extends JPanel {
-        private final String labelKey;
-        private final Runnable action;
-        private boolean hovered;
-
-        ResolveButton(final String labelKey0, final Runnable action0) {
-            labelKey = labelKey0;
-            action = action0;
-            setOpaque(false);
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            setPreferredSize(new Dimension(0, RESOLVE_HEIGHT));
-
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(final MouseEvent e) {
-                    hovered = true;
-                    repaint();
-                }
-                @Override
-                public void mouseExited(final MouseEvent e) {
-                    hovered = false;
-                    repaint();
-                }
-            });
-            addMouseListener(new FMouseAdapter() {
-                @Override
-                public void onLeftClick(final MouseEvent e) {
-                    action.run();
-                }
-            });
-        }
-
-        @Override
-        public void paintComponent(final Graphics g) {
-            super.paintComponent(g);
-            final Graphics2D g2d = (Graphics2D) g.create();
-            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
-            g2d.setColor(hovered ? RESOLVE_COLOR.brighter() : RESOLVE_COLOR);
-            g2d.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
-
-            g2d.setColor(FSkin.getHighContrastColor(RESOLVE_COLOR));
-            g2d.setFont(FSkin.getFont().getBaseFont().deriveFont(Font.BOLD));
-            final FontMetrics fm = g2d.getFontMetrics();
-            final String label = clip(Localizer.getInstance().getMessage(labelKey), fm, getWidth() - 8);
-            g2d.drawString(label, (getWidth() - fm.stringWidth(label)) / 2,
-                    (getHeight() + fm.getAscent()) / 2 - 1);
             g2d.dispose();
         }
     }
