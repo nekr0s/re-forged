@@ -395,6 +395,7 @@ Ajani
 Aminatou
 Angrath
 Arlinn
+Arzakon
 Ashiok
 Bahamut
 Basri
@@ -410,6 +411,7 @@ Dellian
 Dihada
 Domri
 Dovin
+Dyfed
 Ellywick
 Elminster
 Elspeth
@@ -465,6 +467,7 @@ Vraska
 Vronos
 Will
 Windgrace
+Worzel
 Wrenn
 Xenagos
 Yanggu
