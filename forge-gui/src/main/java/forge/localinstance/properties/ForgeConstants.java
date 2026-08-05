@@ -121,6 +121,7 @@ public final class ForgeConstants {
     private static final String CONQUEST_DIR                = RES_DIR + "conquest" + PATH_SEPARATOR;
     public static final String CONQUEST_PLANES_DIR          = CONQUEST_DIR + "planes" + PATH_SEPARATOR;
     public static final String BASE_SKINS_DIR               = RES_DIR + "skins" + PATH_SEPARATOR;
+    public static final String PLAYMATS_DIR                 = RES_DIR + "playmats" + PATH_SEPARATOR;
     public static final String COMMON_FONTS_DIR             = RES_DIR + "fonts" + PATH_SEPARATOR;
     public static final String DEFAULT_SKINS_DIR            = BASE_SKINS_DIR + "default" + PATH_SEPARATOR;
     //don't associate these skin files with a directory since skin directory will be determined later
