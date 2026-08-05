@@ -88,13 +88,15 @@ The engine never talks to a GUI directly. Two seams matter:
 - The vast majority of commits are data-only (`res/cardsfolder/`, `res/editions/`, `res/formats/`) and touch no Java at all.lll
 - Per CONTRIBUTING: do **not** add new unit or wiring tests to the CI suite unless they catch a real integration regression, and disclose AI-agent authorship in the PR (co-author trailer or a note in the body).
 
+All commands below are run from the repo root unless stated otherwise.
+
 ## Build
 
-cd /home/sg/repos/forge && mvn -o -B -pl forge-gui-desktop -am install -DskipTests
+mvn -o -B -pl forge-gui-desktop -am install -DskipTests
 
 ## Launch with
 
-cd /home/sg/repos/forge/forge-gui && java -Xms768m -Xmx4096m -XX:+UseParallelGC \
+cd forge-gui && java -Xms768m -Xmx4096m -XX:+UseParallelGC \
  -Dsun.java2d.xrender=false -Dio.netty.tryReflectionSetAccessible=true -Dfile.encoding=UTF-8 \
  --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED \
  --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.text=ALL-UNNAMED \
@@ -106,9 +108,18 @@ cd /home/sg/repos/forge/forge-gui && java -Xms768m -Xmx4096m -XX:+UseParallelGC 
  --add-opens java.desktop/javax.swing=ALL-UNNAMED --add-opens java.desktop/javax.swing.border=ALL-UNNAMED \
  --add-opens java.desktop/javax.swing.event=ALL-UNNAMED --add-opens java.desktop/java.beans=ALL-UNNAMED \
  --add-opens java.desktop/sun.swing=ALL-UNNAMED --add-opens java.desktop/sun.awt.image=ALL-UNNAMED \
- -cp ../forge-gui-desktop/target/forge-gui-desktop-2.0.14-SNAPSHOT-jar-with-dependencies.jar \
+ -cp ../forge-gui-desktop/target/forge-gui-desktop-\*-jar-with-dependencies.jar \
  forge.view.Main
 
 # Kill the game with
 
 pkill -f '[f]orge.view.Main'
+
+## Build a distributable installer (to share with someone else)
+
+mvn -o -B -P windows-linux install -DskipTests
+
+Produces in `forge-installer/target/` (~2.5 min; `<version>` is the `revision` property from the parent pom, e.g. `2.0.14-SNAPSHOT`). Both bundle `res/`, so they are standalone:
+
+- `forge-installer-<version>.jar` — IzPack installer, ~300 MB. Recipient runs `java -jar forge-installer-<version>.jar` (or double-clicks it), picks a folder, then launches with `forge.cmd` / `forge.sh` / `forge.exe`. Needs Java 17+.
+- `forge-installer-<version>.tar.bz2` — same contents, no installer UI: unpack and run the launcher script.
