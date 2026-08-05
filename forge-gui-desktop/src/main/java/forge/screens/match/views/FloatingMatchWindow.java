@@ -17,12 +17,14 @@
  */
 package forge.screens.match.views;
 
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.Window;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -44,45 +46,33 @@ public abstract class FloatingMatchWindow extends FDialog {
     private final FPref locPref;
     private final Timer saveLocTimer;
 
-    /** Set once the window has been placed, so later shows don't yank it back. */
-    private boolean located;
-    /** Bounds after the last move we made ourselves — used to tell our moves from the user's. */
-    private Rectangle lastAutoBounds;
-
     protected FloatingMatchWindow(final FPref locPref0, final boolean allowResize) {
         super(JOptionPane.getRootFrame(), false, allowResize, "2");
         locPref = locPref0;
         getTitleBar().setCloseButtonVisible(false);
 
-        // Coalesce bursts of move/resize events into a single preference write.
+        // Coalesce a burst of drag events into a single preference write, once the
+        // window has come to rest.
         saveLocTimer = new Timer(400, e -> saveBounds()); //non-repeating, so it stops itself
         saveLocTimer.setRepeats(false);
 
-        addComponentListener(new ComponentAdapter() {
-            @Override public void componentMoved(final ComponentEvent e) { onBoundsChanged(); }
-            @Override public void componentResized(final ComponentEvent e) { onBoundsChanged(); }
-        });
+        // Only a drag of the window itself counts as the user placing it. Component
+        // events can't be used to tell our own moves from the user's: they arrive long
+        // after the call that caused them, and a window manager need not grant exactly
+        // what was asked for, so comparing bounds against what we last set says "the
+        // user did that" for moves we made ourselves. A window that repositions itself
+        // as often as the stack does then buries the position the user chose.
+        final MouseMotionAdapter userMoved = new MouseMotionAdapter() {
+            @Override
+            public void mouseDragged(final MouseEvent e) { saveLocTimer.restart(); }
+        };
+        getTitleBar().addMouseMotionListener(userMoved); //moving, per FDialog.addMoveSupport
+        getRootPane().addMouseMotionListener(userMoved); //resizing, per FDialog.addResizeSupport
     }
 
     /** The panel this window's contents are laid out in. */
     public JPanel getContentPanel() {
         return (JPanel) getContentPane();
-    }
-
-    /**
-     * Runs a move or resize of our own. Component events arrive after the fact,
-     * so the resulting bounds are recorded and later compared against, rather
-     * than using a flag that would already be cleared by then.
-     */
-    protected void reposition(final Runnable move) {
-        move.run();
-        lastAutoBounds = getBounds();
-    }
-
-    private void onBoundsChanged() {
-        if (!located || !isVisible()) { return; }
-        if (getBounds().equals(lastAutoBounds)) { return; } //our own doing, not the user's
-        saveLocTimer.restart();
     }
 
     @Override
@@ -96,7 +86,13 @@ public abstract class FloatingMatchWindow extends FDialog {
             // FDialog.setVisible re-centres on every show; undo that so the
             // window stays where the user put it.
             applyStoredLocation();
-            located = true;
+            // The contents were rebuilt while the window was hidden, and Swing drops
+            // repaints of a component that isn't showing. Showing the window again is
+            // no guarantee of a fresh paint either — a compositing window manager
+            // keeps the pixels it had and sends no expose event — so a window that
+            // comes back the same size as it went away shows what was on it last
+            // time. Repaint what is on it now.
+            getContentPanel().repaint();
         }
     }
 
@@ -106,13 +102,11 @@ public abstract class FloatingMatchWindow extends FDialog {
             placeByDefault();
             return;
         }
-        reposition(() -> {
-            if (restoresSize()) {
-                setBounds(b);
-            } else {
-                setLocation(b.x, b.y);
-            }
-        });
+        if (restoresSize()) {
+            setBounds(b);
+        } else {
+            setLocation(b.x, b.y);
+        }
         if (!isOnScreen()) { placeByDefault(); } //display layout may have changed since last run
     }
 
@@ -129,9 +123,7 @@ public abstract class FloatingMatchWindow extends FDialog {
     /** Where the window sits before the user has moved it. */
     protected void placeByDefault() {
         final Rectangle r = ownerBounds();
-        reposition(() -> setLocation(
-                r.x + (r.width - getWidth()) / 2,
-                r.y + (r.height - getHeight()) / 2));
+        setLocation(r.x + (r.width - getWidth()) / 2, r.y + (r.height - getHeight()) / 2);
     }
 
     protected static Rectangle ownerBounds() {
@@ -156,9 +148,18 @@ public abstract class FloatingMatchWindow extends FDialog {
     }
 
     private boolean isOnScreen() {
-        final Rectangle screen = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
         // Require a decent chunk of the title bar to be reachable, not just one pixel.
-        return screen.intersects(new Rectangle(getX(), getY(), getWidth(), 30));
+        final Rectangle titleStrip = new Rectangle(getX(), getY(), getWidth(), 30);
+        // Every display, not just the primary one: a window the user dragged onto a
+        // second monitor is where they wanted it, and putting it back in the middle of
+        // the main screen on every show is not a rescue.
+        for (final GraphicsDevice screen
+                : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            if (screen.getDefaultConfiguration().getBounds().intersects(titleStrip)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void saveBounds() {

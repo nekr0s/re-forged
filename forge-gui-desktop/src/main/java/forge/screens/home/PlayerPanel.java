@@ -29,6 +29,9 @@ import forge.deck.DeckSection;
 import forge.game.GameType;
 import forge.gamemodes.match.LobbySlot;
 import forge.gamemodes.match.LobbySlotType;
+import forge.gui.PlayMatArt;
+import forge.gui.PlayMats;
+import forge.gui.PlayMats.PlayMat;
 import forge.gui.UiCommand;
 import forge.gui.framework.FScreen;
 import forge.gui.util.SOptionPane;
@@ -81,7 +84,7 @@ public class PlayerPanel extends FPanel {
     private int avatarIndex, sleeveIndex;
     private String sleeveArtKey = "";
     private int sleeveArtOffset = Deck.DEFAULT_SLEEVE_OFFSET;
-    private PlayerMat mat = PlayerMat.SLATE;
+    private String matKey = PlayerMat.DEFAULT_KEY;
 
     private final FTextField txtPlayerName = new FTextField.Builder().build();
     private FRadioButton radioHuman;
@@ -745,9 +748,7 @@ public class PlayerPanel extends FPanel {
      */
     private void createMat() {
         final String[] currentPrefs = FModel.getPreferences().getPref(FPref.UI_PLAYER_MATS).split(",");
-        setMat(index < currentPrefs.length
-                ? PlayerMat.fromKeyOrDefault(currentPrefs[index].trim())
-                : PlayerMat.SLATE);
+        setMat(index < currentPrefs.length ? currentPrefs[index].trim() : PlayerMat.DEFAULT_KEY);
 
         matSwatch.setBorder(new FSkin.LineSkinBorder(FSkin.getColor(FSkin.Colors.CLR_BORDERS)));
         matSwatch.setCursor(new Cursor(Cursor.HAND_CURSOR));
@@ -764,39 +765,60 @@ public class PlayerPanel extends FPanel {
     private void showMatMenu() {
         final JPopupMenu menu = new JPopupMenu();
         for (final PlayerMat option : PlayerMat.values()) {
-            final JMenuItem item = new JMenuItem(option.getLabel());
-            item.setIcon(new MatSwatchIcon(option));
-            item.addActionListener(e -> {
-                setMat(option);
-                persistMat();
-                lobby.firePlayerChangeListener(index);
-            });
-            menu.add(item);
+            menu.add(matMenuItem(option.name(), option.getLabel()));
+        }
+        // Images live under res/playmats, so this section is as long as the player made it.
+        final List<PlayMat> images = PlayMats.getAll();
+        if (!images.isEmpty()) {
+            menu.addSeparator();
+            for (final PlayMat image : images) {
+                menu.add(matMenuItem(image.getKey(), image.getLabel()));
+            }
         }
         menu.show(matSwatch, 0, matSwatch.getHeight());
     }
 
-    private void setMat(final PlayerMat mat0) {
-        mat = mat0 == null ? PlayerMat.SLATE : mat0;
-        matSwatch.setMat(mat);
-        matSwatch.setToolTipText(localizer.getMessage("lblSelectMat") + " (" + mat.getLabel() + ")");
+    private JMenuItem matMenuItem(final String key, final String label) {
+        final JMenuItem item = new JMenuItem(label);
+        item.setIcon(new MatSwatchIcon(key));
+        item.addActionListener(e -> {
+            setMat(key);
+            persistMat();
+            lobby.firePlayerChangeListener(index);
+        });
+        return item;
     }
 
-    public PlayerMat getMat() {
-        return mat;
+    private void setMat(final String key) {
+        matKey = validMatKey(key) ? key : PlayerMat.DEFAULT_KEY;
+        matSwatch.setMatKey(matKey);
+        matSwatch.setToolTipText(localizer.getMessage("lblSelectMat") + " (" + matLabel(matKey) + ")");
     }
 
     /** The key sent to the lobby, so the other players see this seat's mat. */
     public String getMatKey() {
-        return mat.name();
+        return matKey;
     }
 
     /** Shows the mat the slot's owner picked, which for remote seats is chosen on their machine. */
     public void setMatKey(final String key) {
-        final PlayerMat slotMat = PlayerMat.fromKey(key);
-        if (slotMat != null) {
-            setMat(slotMat);
+        if (validMatKey(key)) {
+            setMat(key);
         }
+    }
+
+    /** Preset colours and mat images share one key space; anything else is stale or foreign. */
+    private static boolean validMatKey(final String key) {
+        return PlayerMat.fromKey(key) != null || PlayMats.fromKey(key) != null;
+    }
+
+    private static String matLabel(final String key) {
+        final PlayerMat preset = PlayerMat.fromKey(key);
+        if (preset != null) {
+            return preset.getLabel();
+        }
+        final PlayMat image = PlayMats.fromKey(key);
+        return image == null ? key : image.getLabel();
     }
 
     /** Writes this seat's choice back into the CSV preference, leaving other seats alone. */
@@ -808,7 +830,7 @@ public class PlayerPanel extends FPanel {
         for (int i = 0; i < size; i++) {
             if (i > 0) { sb.append(','); }
             if (i == index) {
-                sb.append(mat.name());
+                sb.append(matKey);
             } else {
                 sb.append(i < current.length && !current[i].trim().isEmpty()
                         ? current[i].trim() : PlayerMat.DEFAULT_KEY);
@@ -818,24 +840,31 @@ public class PlayerPanel extends FPanel {
         prefs.save();
     }
 
-    /** Small colour chip shown next to each entry in the mat menu. */
+    /** Small chip shown next to each entry in the mat menu: the colour, or the art itself. */
     private static class MatSwatchIcon implements Icon {
         private static final int W = 24, H = 14;
-        private final PlayerMat mat;
+        private final String key;
 
-        MatSwatchIcon(final PlayerMat mat0) { mat = mat0; }
+        MatSwatchIcon(final String key0) { key = key0; }
 
         @Override public int getIconWidth() { return W; }
         @Override public int getIconHeight() { return H; }
 
         @Override
         public void paintIcon(final Component c, final Graphics g, final int x, final int y) {
-            if (mat.isTransparent()) {
-                g.setColor(FSkin.getColor(FSkin.Colors.CLR_INACTIVE).getColor());
+            final PlayMat image = PlayMats.fromKey(key);
+            final BufferedImage thumbnail = image == null ? null : PlayMatArt.thumbnail(image, W, H);
+            if (thumbnail != null) {
+                g.drawImage(thumbnail, x, y, null);
             } else {
-                g.setColor(new Color(mat.getRgb()));
+                final PlayerMat mat = PlayerMat.fromKeyOrDefault(key);
+                if (mat.isTransparent()) {
+                    g.setColor(FSkin.getColor(FSkin.Colors.CLR_INACTIVE).getColor());
+                } else {
+                    g.setColor(new Color(mat.getRgb()));
+                }
+                g.fillRect(x, y, W, H);
             }
-            g.fillRect(x, y, W, H);
             g.setColor(FSkin.getColor(FSkin.Colors.CLR_BORDERS).getColor());
             g.drawRect(x, y, W - 1, H - 1);
         }

@@ -62,12 +62,10 @@ public class FloatingStack extends FloatingMatchWindow {
 
     /** Fits the window to the current stack, leaving it wherever the user put it. */
     public void sizeToContent() {
-        reposition(() -> {
-            pack();
-            if (!isUserPlaced()) {
-                placeByDefault();
-            }
-        });
+        pack();
+        if (!isUserPlaced()) {
+            placeByDefault();
+        }
     }
 
     /** Only the position is the user's to choose; the size always follows the contents. */
@@ -82,6 +80,6 @@ public class FloatingStack extends FloatingMatchWindow {
         final int x = r.x + (r.width - getWidth()) / 2;
         final int y = Math.max(r.y + 8,
                 r.y + Math.round(r.height * DEFAULT_BOTTOM_FRACTION) - getHeight());
-        reposition(() -> setLocation(x, y));
+        setLocation(x, y);
     }
 }

@@ -205,8 +205,7 @@ public class VField implements IVDoc<CField> {
 
     /** Re-reads this player's chosen mat and repaints the play surface. */
     public void updateMat() {
-        matPanel.setMat(player == null
-                ? PlayerMat.SLATE : PlayerMat.fromKeyOrDefault(player.getMatKey()));
+        matPanel.setMatKey(player == null ? PlayerMat.DEFAULT_KEY : player.getMatKey());
     }
 
     @Override
