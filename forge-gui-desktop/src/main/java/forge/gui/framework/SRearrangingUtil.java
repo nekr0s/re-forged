@@ -463,12 +463,29 @@ public final class SRearrangingUtil {
      * <br><br>
      * Cell will not be removed, but its coordinates will be filled
      * by its neighbors.
-     * 
+     *
      * @param sourceCell0 &emsp; {@link forge.gui.framework.DragCell}
      */
     public static void fillGap(final DragCell sourceCell0) {
         cellSrc = sourceCell0;
         fillGap();
+    }
+
+    /**
+     * As {@link #fillGap(DragCell)}, but reports failure instead of throwing.
+     * <br><br>
+     * Not every layout has neighbours that line up with the gap — a cell emptied
+     * while other cells are mid-rearrangement may have none. Callers that are
+     * setting the match screen up rather than responding to a drag use this, so
+     * one unfillable cell doesn't take the whole screen down with it; leaving the
+     * empty cell in place is the fallback.
+     *
+     * @param sourceCell0 &emsp; {@link forge.gui.framework.DragCell}
+     * @return whether neighbours were found to cover the gap
+     */
+    public static boolean fillGapIfPossible(final DragCell sourceCell0) {
+        cellSrc = sourceCell0;
+        return tryFillGap(true) || tryFillGap(false);
     }
 
     /** Hides outer borders for components on edges,

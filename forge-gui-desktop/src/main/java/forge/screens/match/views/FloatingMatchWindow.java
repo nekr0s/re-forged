@@ -33,6 +33,7 @@ import javax.swing.Timer;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 import forge.view.FDialog;
+import forge.view.FFrame;
 
 /**
  * Base for the match windows that float over the board instead of living in a
@@ -80,6 +81,11 @@ public abstract class FloatingMatchWindow extends FDialog {
         final boolean wasVisible = isVisible();
         if (visible && !wasVisible) {
             applyStoredLocation(); //place before showing, so it doesn't flash at the wrong spot
+            // A full-screen-exclusive owner sits above every ordinary window, its own
+            // dialogs included, so a window shown over it is invisible until the mode
+            // is left. Being always-on-top is what gets it back in front.
+            final Window owner = JOptionPane.getRootFrame();
+            setAlwaysOnTop(owner instanceof FFrame && ((FFrame) owner).isFullScreen());
         }
         super.setVisible(visible);
         if (visible && !wasVisible) {
