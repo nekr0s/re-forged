@@ -120,8 +120,7 @@ public class CPrompt implements ICDoc {
         if (cell != null) {
             cell.removeDoc(view);
             view.setParentCell(null);
-            if (cell.getDocs().isEmpty()) {
-                SRearrangingUtil.fillGap(cell);
+            if (cell.getDocs().isEmpty() && SRearrangingUtil.fillGapIfPossible(cell)) {
                 FView.SINGLETON_INSTANCE.removeDragCell(cell);
             }
         }

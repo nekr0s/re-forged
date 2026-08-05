@@ -108,8 +108,8 @@ public class VMatchUI implements IVTopLevelUI {
             if (parent != null) {
                 parent.removeDoc(vField);
                 vField.setParentCell(null);
-                if (parent != c0 && parent != c1 && parent.getDocs().isEmpty()) {
-                    SRearrangingUtil.fillGap(parent);
+                if (parent != c0 && parent != c1 && parent.getDocs().isEmpty()
+                        && SRearrangingUtil.fillGapIfPossible(parent)) {
                     FView.SINGLETON_INSTANCE.removeDragCell(parent);
                 }
             }
@@ -266,9 +266,16 @@ public class VMatchUI implements IVTopLevelUI {
 
         // Fill in gaps
         SwingUtilities.invokeLater(() -> {
+            // The multiplayer field pass rewrites rough bounds, but only pushes them
+            // into pixel bounds for the split and rows layouts. Gap filling matches
+            // cells by their on-screen edges, so it has to see the same layout the
+            // rough bounds describe — otherwise it measures where the cells used to
+            // be and finds no neighbour that lines up with the gap.
+            if (sortFieldsEnabled) {
+                SResizingUtil.resizeWindow();
+            }
             for (final DragCell c : FView.SINGLETON_INSTANCE.getDragCells()) {
-                if (c.getDocs().isEmpty()) {
-                    SRearrangingUtil.fillGap(c);
+                if (c.getDocs().isEmpty() && SRearrangingUtil.fillGapIfPossible(c)) {
                     FView.SINGLETON_INSTANCE.removeDragCell(c);
                 }
             }
