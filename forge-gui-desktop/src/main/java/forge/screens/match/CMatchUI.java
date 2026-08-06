@@ -1006,7 +1006,7 @@ public final class CMatchUI
         SLayoutIO.loadLayout(null);
         FloatingZone.pruneUnparentedDocks();
         //loadLayout re-docks every registered doc, so pull the floating ones back out
-        getCPrompt().undockPrompt();
+        getCPrompt().applyDockMode();
         getCStack().undockStack();
         view.populate();
         final PlayerZoneUpdates zones = new PlayerZoneUpdates();

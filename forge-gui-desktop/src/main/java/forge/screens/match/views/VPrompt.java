@@ -124,7 +124,8 @@ public class VPrompt implements IVDoc<CPrompt> {
      */
     @Override
     public void populate() {
-        populateInto(parentCell.getBody());
+        // Keep clear of the priority outline the cell draws over its body.
+        populateInto(parentCell.getBody(), DragCell.HIGHLIGHT_BORDER_T);
     }
 
     /**
@@ -133,11 +134,16 @@ public class VPrompt implements IVDoc<CPrompt> {
      * one set of component instances.
      */
     public void populateInto(final JPanel container) {
+        populateInto(container, 1);
+    }
+
+    private void populateInto(final JPanel container, final int inset) {
     	ForgePreferences prefs = FModel.getPreferences();
         container.removeAll();
 
         // wrap   : 2 columns required for btnOk and btnCancel.
-        container.setLayout(new MigLayout("wrap 2, gap 0px!, insets 1px 1px 3px 1px"));
+        container.setLayout(new MigLayout("wrap 2, gap 0px!, insets "
+                + inset + "px " + inset + "px " + Math.max(inset, 3) + "px " + inset + "px"));
         if (prefs.getPrefBoolean(FPref.UI_COMPACT_PROMPT)) { //hide header and use smaller font if compact prompt
             tarMessage.setFont(FSkin.getFont());
         }
