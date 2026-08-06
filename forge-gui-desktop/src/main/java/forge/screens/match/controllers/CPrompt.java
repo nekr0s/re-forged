@@ -48,6 +48,7 @@ import forge.screens.match.CMatchUI;
 import forge.screens.match.views.FloatingPrompt;
 import forge.screens.match.views.VPrompt;
 import forge.toolbox.FSkin;
+import forge.util.TextUtil;
 import forge.view.FView;
 
 /**
@@ -297,22 +298,40 @@ public class CPrompt implements ICDoc {
     }
 
     public void setMessage(final String s0, final CardView card) {
-        view.getTarMessage().setText(FSkin.encodeSymbols(spaceRows(s0), false));
+        view.getTarMessage().setText(colorEmphasis(FSkin.encodeSymbols(spaceRows(s0), false)));
         view.setCardView(card);
     }
 
     /**
-     * Puts a blank line between the prompt's rows — priority, turn, phase, stack —
-     * which read as a wall of text at the floating window's width otherwise. Runs
-     * of line breaks collapse into one gap, so messages that already separate their
-     * paragraphs don't end up with several blank lines. Must run before
-     * {@link FSkin#encodeSymbols}, which turns every line break into a {@code <br>}
-     * of its own.
+     * Paints the runs the message marked as carrying its answer — the phase names,
+     * the player holding priority — in the prompt accent, so the eye can pick them
+     * out of the labels without reading the whole panel. Runs after
+     * {@link FSkin#encodeSymbols}, which emits HTML of its own but leaves the
+     * control characters alone.
      */
-    private String spaceRows(final String message) {
-        if (!isFloatingEnabled()) {
-            return message; //a docked cell is short; the extra gaps would cost a row of text
+    private static String colorEmphasis(final String message) {
+        if (message == null) {
+            return null;
         }
+        return message
+                .replace(String.valueOf(TextUtil.EMPHASIS_START),
+                        "<span style=\"color:" + accentHex() + "\">")
+                .replace(String.valueOf(TextUtil.EMPHASIS_END), "</span>");
+    }
+
+    private static String accentHex() {
+        return String.format("#%02X%02X%02X",
+                VPrompt.ACCENT.getRed(), VPrompt.ACCENT.getGreen(), VPrompt.ACCENT.getBlue());
+    }
+
+    /**
+     * Puts a blank line between the prompt's rows — priority, phase, next phase —
+     * which read as a wall of text otherwise. Runs of line breaks collapse into one
+     * gap, so messages that already separate their paragraphs don't end up with
+     * several blank lines. Must run before {@link FSkin#encodeSymbols}, which turns
+     * every line break into a {@code <br>} of its own.
+     */
+    private static String spaceRows(final String message) {
         return message.replaceAll("[\r\n]+", "\n\n");
     }
 
@@ -364,7 +383,13 @@ public class CPrompt implements ICDoc {
         if (game == null) {
             return;
         }
-        final String text = String.format("T:%d G:%d/%d [%s]", game.getTurn(), game.getNumPlayedGamesInMatch() + 1, game.getNumGamesInMatch(), game.getGameType());
+        //The turn number and turn player used to be repeated in the message body;
+        //the header is where they belong, so the body can lead with the ask. Game
+        //number and game type stay in the tooltip — they don't change often enough
+        //to earn room in a header that's read every priority pass.
+        final String turnPlayer = game.getPlayerTurn() == null ? null : game.getPlayerTurn().getName();
+        final String text = String.format("Turn: %d%s", game.getTurn(),
+                turnPlayer == null ? "" : " (" + turnPlayer + ")");
         view.getLblGames().setText(text);
         view.getLblGames().setToolTipText(String.format("%s: Game #%d of %d, turn %d", game.getGameType(), game.getNumPlayedGamesInMatch() + 1, game.getNumGamesInMatch(), game.getTurn()));
     }

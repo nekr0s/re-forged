@@ -126,6 +126,7 @@ import forge.trackable.TrackableTypes;
 import forge.util.FSerializableFunction;
 import forge.util.ITriggerEvent;
 import forge.util.Localizer;
+import forge.util.TextUtil;
 import forge.util.collect.FCollection;
 import forge.util.collect.FCollectionView;
 import forge.view.FView;
@@ -1191,6 +1192,7 @@ public final class CMatchUI
     }
 
     private void notePromptMessage(String message) {
+        message = TextUtil.stripEmphasis(message); //plain text: this is re-shown as a bare label
         if (message != null) {
             int lastBreak = message.lastIndexOf("\n");
             if (lastBreak != -1) {

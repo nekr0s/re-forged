@@ -19,6 +19,7 @@ import forge.toolbox.FContainer;
 import forge.toolbox.FDisplayObject;
 import forge.toolbox.FEvent.FEventHandler;
 import forge.util.TextBounds;
+import forge.util.TextUtil;
 import forge.util.Utils;
 
 public class VPrompt extends FContainer {
@@ -72,11 +73,11 @@ public class VPrompt extends FContainer {
         return message;
     }
     public void setMessage(String message0) {
-        message = message0;
+        message = TextUtil.stripEmphasis(message0);
         card = null;
     }
     public void setMessage(String message0, CardView card0) {
-        message = message0;
+        message = TextUtil.stripEmphasis(message0);
         card = card0;
     }
 

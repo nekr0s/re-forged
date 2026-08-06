@@ -134,6 +134,10 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
     private Font badgeFont;
     private int badgeFontCardWidth; // cardWidth when badgeFont was last computed
 
+    private float hoverLift;        // current lift in px, animated
+    private int hoverLiftTarget;    // where the lift animation is heading
+    private javax.swing.Timer hoverLiftTimer;
+
     private static final Color BADGE_BG_COLOR = new Color(0, 0, 0, 180);
     private static final Color HOTKEY_BADGE_BG = new Color(20, 20, 20, 220);
     private static final Color HOTKEY_BADGE_RING = new Color(220, 220, 220);
@@ -289,6 +293,39 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
     }
     public final void setSelected(final boolean isSelected0) {
         isSelected = isSelected0;
+        animateHoverLift(isSelected0 ? hoverLiftDistance() : 0);
+        repaint();
+    }
+
+    /** How far a hovered card rises, in px — scaled to the card but capped by the
+     *  headroom the rotation margin leaves above the card inside the panel bounds,
+     *  minus room for the actionable glow. */
+    private int hoverLiftDistance() {
+        return Math.min(Math.max(0, cardYOffset - 6), Math.round(cardWidth * 0.08f));
+    }
+
+    private void animateHoverLift(final int target) {
+        if (hoverLiftTarget == target) {
+            return;
+        }
+        hoverLiftTarget = target;
+        if (hoverLiftTimer == null) {
+            hoverLiftTimer = new javax.swing.Timer(16, e -> stepHoverLift());
+        }
+        if (!hoverLiftTimer.isRunning()) {
+            hoverLiftTimer.start();
+        }
+    }
+
+    /** Exponential ease-out: settles in roughly 100ms. */
+    private void stepHoverLift() {
+        final float diff = hoverLiftTarget - hoverLift;
+        if (Math.abs(diff) < 0.5f) {
+            hoverLift = hoverLiftTarget;
+            hoverLiftTimer.stop();
+        } else {
+            hoverLift += diff * 0.35f;
+        }
         repaint();
     }
 
@@ -301,8 +338,14 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
             super.validate();
         }
         Graphics2D g2d = (Graphics2D) g;
-        if (getTappedAngle() > 0) {
+        final boolean lifted = hoverLift > 0.01f;
+        if (lifted || getTappedAngle() > 0) {
             g2d = (Graphics2D) g2d.create();
+        }
+        if (lifted) {
+            g2d.translate(0, -Math.round(hoverLift));
+        }
+        if (getTappedAngle() > 0) {
             final float edgeOffset = cardWidth / 2f;
             g2d.rotate(getTappedAngle(), cardXOffset + edgeOffset, (cardYOffset + cardHeight)
                     - edgeOffset);
@@ -322,6 +365,22 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
         final int cornerSize = noBorderPref && !cardImgHasAlpha ? 0 : Math.max(4, Math.round(cardWidth * CardPanel.ROUNDED_CORNER_SIZE));
         final int offset = isTapped() && (!noBorderPref || cardImgHasAlpha) ? 1 : 0;
 
+        // Soft drop shadow left behind at the resting position while the card is lifted
+        if (hoverLift > 0.5f) {
+            final int lift = Math.round(hoverLift);
+            for (int layer = 3; layer >= 1; layer--) {
+                g2d.setColor(new Color(0f, 0f, 0f, 0.10f));
+                g2d.fillRoundRect(cardXOffset - layer, cardYOffset + lift + offset - layer,
+                        cardWidth + (layer * 2), cardHeight + (layer * 2), cornerSize + layer, cornerSize + layer);
+            }
+        }
+
+        // Glow for actionable (weakly selectable) cards
+        if (isPreferenceEnabled(FPref.UI_SHOW_ACTIONABLE_HIGHLIGHTS) && !matchUI.isSelectable(getCard())
+                && matchUI.isWeaklySelectable(getCard())) {
+            drawActionableGlow(g2d, cornerSize, offset);
+        }
+
         // Yellow glow for cards that Auto would tap to pay (weak-selectable strength >= 2)
         if (isPreferenceEnabled(FPref.UI_SHOW_AUTOTAP_PREVIEW) && matchUI.getWeakSelectableStrength(getCard()) >= 2) {
             for (int layer = 2; layer >= 1; layer--) {
@@ -338,12 +397,7 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
             g2d.fillRoundRect(cardXOffset - n2, (cardYOffset - n2) + offset, cardWidth + (n2 * 2), cardHeight + (n2 * 2), cornerSize + n2, cornerSize + n2);
         }
 
-        // Green outline for hover
-        if (isSelected) {
-            g2d.setColor(Color.green);
-            final int n = Math.max(1, Math.round(cardWidth * CardPanel.SELECTED_BORDER_SIZE));
-            g2d.fillRoundRect(cardXOffset - n, (cardYOffset - n) + offset, cardWidth + (n * 2), cardHeight + (n * 2), cornerSize + n , cornerSize + n);
-        } else if (hasFlash && (getCard() != null && matchUI.mayView(getCard()))) {
+        if (hasFlash && (getCard() != null && matchUI.mayView(getCard()))) {
             g2d.setColor(Color.cyan);
             final int n = Math.max(1, Math.round(cardWidth * CardPanel.SELECTED_BORDER_SIZE));
             g2d.fillRoundRect(cardXOffset - n, (cardYOffset - n) + offset, cardWidth + (n * 2), cardHeight + (n * 2), cornerSize + n , cornerSize + n);
@@ -388,19 +442,12 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
             }
         }
 
-        // Inner highlight: white for fully selectable cards, the configured colour for
-        // actionable (weakly selectable) ones. With black borders enabled this sits in the
-        // border gap as a 1px inset; with borders disabled the card image fills the whole
-        // panel and would cover an inset, so draw it as an outset (like the frames above).
-        Color innerBorder = null;
+        // Inner white highlight for fully selectable cards. With black borders enabled this
+        // sits in the border gap as a 1px inset; with borders disabled the card image fills
+        // the whole panel and would cover an inset, so draw it as an outset (like the frames above).
         if (matchUI.isSelectable(getCard())) {
-            innerBorder = Color.WHITE;
-        } else if (isPreferenceEnabled(FPref.UI_SHOW_ACTIONABLE_HIGHLIGHTS) && matchUI.isWeaklySelectable(getCard())) {
-            innerBorder = parseActionableHighlightColor();
-        }
-        if (innerBorder != null) {
-            g2d.setColor(innerBorder);
-            if (noBorderPref && !isSelected) {
+            g2d.setColor(Color.WHITE);
+            if (noBorderPref) {
                 final int n = Math.max(1, Math.round(cardWidth * CardPanel.SELECTED_BORDER_SIZE));
                 g2d.fillRoundRect(cardXOffset - n, (cardYOffset - n) + offset, cardWidth + (n * 2), cardHeight + (n * 2), cornerSize + n, cornerSize + n);
             } else {
@@ -408,6 +455,29 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
                 g2d.fillRoundRect(cardXOffset + ins, cardYOffset + ins, cardWidth - ins * 2, cardHeight - ins * 2, cornerSize - ins, cornerSize - ins);
             }
         }
+    }
+
+    /**
+     * Halo for actionable cards: layers fading outward from the card edge, closed off
+     * by a crisp rim so the cue still reads against a light background — a purely soft
+     * glow disappears over pale art and pale player mats.
+     */
+    private void drawActionableGlow(final Graphics2D g2d, final int cornerSize, final int offset) {
+        final Color c = parseActionableHighlightColor();
+        final float r = c.getRed() / 255f, g = c.getGreen() / 255f, b = c.getBlue() / 255f;
+
+        final int radius = Math.max(4, Math.min(12, Math.round(cardWidth * 0.07f)));
+        for (int layer = radius; layer >= 1; layer--) {
+            final float t = 1f - ((layer - 1) / (float) radius); // 0 at the outer edge, 1 at the card
+            g2d.setColor(new Color(r, g, b, 0.05f + (0.20f * t * t)));
+            g2d.fillRoundRect(cardXOffset - layer, (cardYOffset - layer) + offset,
+                    cardWidth + (layer * 2), cardHeight + (layer * 2), cornerSize + layer, cornerSize + layer);
+        }
+
+        final int rim = Math.max(1, Math.round(cardWidth * CardPanel.SELECTED_BORDER_SIZE));
+        g2d.setColor(new Color(r, g, b, 0.85f));
+        g2d.fillRoundRect(cardXOffset - rim, (cardYOffset - rim) + offset,
+                cardWidth + (rim * 2), cardHeight + (rim * 2), cornerSize + rim, cornerSize + rim);
     }
 
     /** Pref is normalized to 6 hex chars on the write side; this just parses,
@@ -1089,6 +1159,10 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
 
     @Override
     public void dispose() {
+        if (hoverLiftTimer != null) {
+            hoverLiftTimer.stop();
+            hoverLiftTimer = null;
+        }
         attachedToPanel = null;
         attachedPanels = null;
         stack = null;

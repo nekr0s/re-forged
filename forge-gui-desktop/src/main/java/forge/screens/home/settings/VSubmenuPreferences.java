@@ -93,7 +93,7 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
     private final JCheckBox cbShowActionableHighlights = new OptionsCheckBox(localizer.getMessage("cbShowActionableHighlights"));
     private final JCheckBox cbShowAutoTapPreview = new OptionsCheckBox(localizer.getMessage("cbShowAutoTapPreview"));
     private final JCheckBox cbShowLinkedExileCards = new OptionsCheckBox(localizer.getMessage("cbShowLinkedExileCards"));
-    private final FTextField txtActionableHighlightColor = new FTextField.Builder().ghostText("66CCFF").maxLength(6).build();
+    private final FTextField txtActionableHighlightColor = new FTextField.Builder().ghostText("FFFFFF").maxLength(6).build();
     private final JCheckBox cbLargeCardViewers = new OptionsCheckBox(localizer.getMessage("cbLargeCardViewers"));
     private final JCheckBox cbSmallDeckViewer = new OptionsCheckBox(localizer.getMessage("cbSmallDeckViewer"));
     private final JCheckBox cbDisplayFoil = new OptionsCheckBox(localizer.getMessage("cbDisplayFoil"));
