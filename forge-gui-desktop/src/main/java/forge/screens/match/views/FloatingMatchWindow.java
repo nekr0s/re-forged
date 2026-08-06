@@ -28,6 +28,7 @@ import java.awt.event.MouseMotionAdapter;
 
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 
 import forge.localinstance.properties.ForgePreferences.FPref;
@@ -92,6 +93,12 @@ public abstract class FloatingMatchWindow extends FDialog {
             // FDialog.setVisible re-centres on every show; undo that so the
             // window stays where the user put it.
             applyStoredLocation();
+            // Showing a window only asks the window manager to map it — the placing
+            // happens on its side, after this call has returned, so the position set
+            // above can still be overridden by the manager's own policy. Assert it
+            // once more when the queue has caught up with the map. Harmless if the
+            // window has been hidden again by then.
+            SwingUtilities.invokeLater(this::applyStoredLocation);
             // The contents were rebuilt while the window was hidden, and Swing drops
             // repaints of a component that isn't showing. Showing the window again is
             // no guarantee of a fresh paint either — a compositing window manager
@@ -111,7 +118,11 @@ public abstract class FloatingMatchWindow extends FDialog {
         if (restoresSize()) {
             setBounds(b);
         } else {
-            setLocation(b.x, b.y);
+            // setBounds, not setLocation, even though only the position is being
+            // restored: position and size reach the window manager as one set of
+            // hints, and a bare move on a window that is about to be mapped leaves
+            // it free to place the window wherever its own policy says.
+            setBounds(b.x, b.y, getWidth(), getHeight());
         }
         if (!isOnScreen()) { placeByDefault(); } //display layout may have changed since last run
     }
@@ -154,6 +165,10 @@ public abstract class FloatingMatchWindow extends FDialog {
     }
 
     private boolean isOnScreen() {
+        // A window that has no size yet can't be tested: the zero-width strip below
+        // intersects nothing, and the answer "off screen" would send every such show
+        // to the default position.
+        if (getWidth() <= 0) { return true; }
         // Require a decent chunk of the title bar to be reachable, not just one pixel.
         final Rectangle titleStrip = new Rectangle(getX(), getY(), getWidth(), 30);
         // Every display, not just the primary one: a window the user dragged onto a

@@ -167,11 +167,14 @@ public class InputPassPriority extends InputSyncronizedBase {
         showMessage(getTurnPhasePriorityMessage(getController().getGame()));
         chosenSa = null;
         Localizer localizer = Localizer.getInstance();
+        //"Pass" rather than "OK": passing priority is what the button does, and is
+        //what moves the game on to the phase the prompt names.
+        final String pass = localizer.getMessage("lblPass");
         if (getController().canUndoLastAction()) { //allow undoing with cancel button if can undo last action
-            getController().getGui().updateButtons(getOwner(), localizer.getMessage("lblOK"), localizer.getMessage("lblUndo") + " (" + getController().getGame().getStack().getUndoStackSize() + ")", true, true, true);
+            getController().getGui().updateButtons(getOwner(), pass, localizer.getMessage("lblUndo") + " (" + getController().getGame().getStack().getUndoStackSize() + ")", true, true, true);
         }
         else { //otherwise allow ending turn with cancel button
-            getController().getGui().updateButtons(getOwner(), localizer.getMessage("lblOK"), localizer.getMessage("lblEndTurn"), true, true, true);
+            getController().getGui().updateButtons(getOwner(), pass, localizer.getMessage("lblEndTurn"), true, true, true);
         }
 
         getController().getGui().alertUser();

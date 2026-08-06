@@ -21,6 +21,7 @@ import forge.game.Game;
 import forge.game.card.Card;
 import forge.game.card.CardView;
 import forge.game.phase.PhaseHandler;
+import forge.game.phase.PhaseType;
 import forge.game.player.Player;
 import forge.game.player.PlayerView;
 import forge.game.spellability.SpellAbility;
@@ -30,6 +31,7 @@ import forge.model.FModel;
 import forge.player.PlayerControllerHuman;
 import forge.util.ITriggerEvent;
 import forge.util.Localizer;
+import forge.util.TextUtil;
 
 import java.util.List;
 
@@ -131,25 +133,33 @@ public abstract class InputBase implements java.io.Serializable, Input {
         final PhaseHandler ph = game.getPhaseHandler();
         final StringBuilder sb = new StringBuilder();
         Localizer localizer = Localizer.getInstance();
-        sb.append(localizer.getMessage("lblPriority")).append(": ").append(ph.getPriorityPlayer()).append("\n");
-        sb.append(localizer.getMessage("lblTurn")).append(": ").append(ph.getTurn()).append(" (").append(ph.getPlayerTurn()).append(")");
 
-        if (!game.isNeitherDayNorNight()) {
-            sb.append("  [");
-
-            String dayLabel = game.isDay() ? "Day" : "Night";
-
-            sb.append(Localizer.getInstance().getMessage("lbl" + dayLabel));
-            sb.append("]");
-        }
-
-        sb.append("\n");
-        sb.append(localizer.getMessage("lblPhase")).append(": ").append(ph.getPhase().nameForUi).append("\n");
-        sb.append(localizer.getMessage("lblStack")).append(": ");
-        if (!game.getStack().isEmpty()) {
-            sb.append(game.getStack().size()).append(" ").append(localizer.getMessage("lbltoResolve"));
+        // Lead with what the game wants, not with what it already shows elsewhere:
+        // the turn number and turn player live in the prompt's header.
+        final Player priority = ph.getPriorityPlayer();
+        if (priority != null && priority == getController().getPlayer()) {
+            sb.append(localizer.getMessage("lblYouHavePriority"));
         } else {
-            sb.append(localizer.getMessage("lblEmpty"));
+            sb.append(localizer.getMessage("lblPlayerHasPriority", TextUtil.emphasize(priority)));
+        }
+        sb.append("\n");
+
+        sb.append(localizer.getMessage("lblCurrentPhase")).append(": ")
+                .append(TextUtil.emphasize(ph.getPhase().nameForUi));
+        if (!game.isNeitherDayNorNight()) {
+            sb.append("  [").append(localizer.getMessage(game.isDay() ? "lblDay" : "lblNight")).append("]");
+        }
+        sb.append("\n");
+
+        final PhaseType nextStop = getNextStop(game);
+        sb.append(localizer.getMessage("lblNextPhase")).append(": ")
+                .append(TextUtil.emphasize(nextStop == null
+                        ? localizer.getMessage("lblEndOfTurn") : nextStop.nameForUi));
+
+        if (!game.getStack().isEmpty()) {
+            //an empty stack is the normal case and says nothing worth a line of its own
+            sb.append("\n").append(localizer.getMessage("lblStack")).append(": ")
+                    .append(TextUtil.emphasize(game.getStack().size() + " " + localizer.getMessage("lbltoResolve")));
         }
         if (FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.UI_SHOW_STORM_COUNT_IN_PROMPT)) {
             int stormCount = game.getView().getStormCount();
@@ -176,5 +186,47 @@ public abstract class InputBase implements java.io.Serializable, Input {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * The phase this player will next be stopped at if everyone simply passes —
+     * that is, the first upcoming phase whose indicator chip is still switched on
+     * for the current turn player. Skipped phases are exactly the ones the engine
+     * declines to prompt for (see
+     * {@link forge.player.PlayerControllerHuman#getAbilityToPlay}), so this is the
+     * same test, run forwards.
+     * <p>
+     * A prediction, not a promise: an opponent responding hands priority back
+     * sooner, and the engine skips further phases for rules reasons this can't see
+     * (a replacement effect skipping a phase, an extra phase pushed onto the
+     * stack). The common rules skip — no attackers means no damage steps — is
+     * checked, since it would otherwise be wrong every turn nobody attacks.
+     *
+     * @return the phase to name, or {@code null} if the turn ends first
+     */
+    private PhaseType getNextStop(final Game game) {
+        final PhaseHandler ph = game.getPhaseHandler();
+        final Player turnPlayer = ph.getPlayerTurn();
+        if (turnPlayer == null || ph.getPhase() == null) {
+            return null;
+        }
+        // Chips are per player field, so a walk past the turn boundary would be
+        // reading the wrong player's settings. Stop there and say so instead.
+        final boolean topsy = turnPlayer.isPhasesReversed();
+        final PlayerView turnPlayerView = turnPlayer.getView();
+        final boolean noAttackers = ph.getCombat() == null || ph.getCombat().getAttackers().isEmpty();
+
+        PhaseType phase = ph.getPhase();
+        while (!PhaseType.isLast(phase, topsy)) {
+            phase = PhaseType.getNext(phase, topsy);
+            if (noAttackers && (phase == PhaseType.COMBAT_FIRST_STRIKE_DAMAGE
+                    || phase == PhaseType.COMBAT_DAMAGE)) {
+                continue;
+            }
+            if (!controller.isUiSetToSkipPhase(turnPlayerView, phase)) {
+                return phase;
+            }
+        }
+        return null;
     }
 }

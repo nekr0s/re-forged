@@ -12,6 +12,7 @@ import forge.model.FModel;
 import forge.player.PlayerControllerHuman;
 import forge.util.ITriggerEvent;
 import forge.util.Localizer;
+import forge.util.TextUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,14 +81,17 @@ public class InputPayManaOfCostPayment extends InputPayMana {
         if (messagePrefix != null) {
             msg.append(messagePrefix).append("\n");
         }
+        // Lead with what is being paid for. The card itself has left the hand by now, so
+        // name it on its own line; hovering the prompt puts it in the card detail panel.
+        msg.append(localizer.getMessage(saPaidFor.isSpell() ? "lblPromptCasting" : "lblPromptActivating"))
+                .append(" ").append(TextUtil.emphasize(saPaidFor.getHostCard().getTranslatedName())).append("\n");
         if (FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.UI_DETAILED_SPELLDESC_IN_PROMPT)) {
-            if (saPaidFor.isSpell()) {
-                msg.append(saPaidFor.getStackDescription().replace("(Targeting ERROR)", "")).append("\n\n");
-            } else {
-                msg.append(saPaidFor.getHostCard()).append(" - ").append(saPaidFor.toString()).append("\n\n");
+            final String desc = getAbilityDescription();
+            if (!desc.isEmpty()) {
+                msg.append(desc).append("\n");
             }
         }
-        msg.append(localizer.getMessage("lblPayManaCost")).append(" ").append(displayMana);
+        msg.append(localizer.getMessage("lblPromptManaCost")).append(" ").append(displayMana);
         if (this.phyLifeToLose > 0) {
             msg.append(" ").append(String.format(localizer.getMessage("lblLifePaidForPhyrexianMana"), this.phyLifeToLose));
         }
@@ -107,6 +111,30 @@ public class InputPayManaOfCostPayment extends InputPayMana {
         }
 
         return msg.toString();
+    }
+
+    /**
+     * What the spell or ability does, without the "Card (id) - " prefix the stack
+     * description carries — the card is already named on the line above. Empty when
+     * the description says nothing beyond the name, as it does for permanent spells.
+     */
+    private String getAbilityDescription() {
+        String desc = saPaidFor.isSpell()
+                ? saPaidFor.getStackDescription().replace("(Targeting ERROR)", "")
+                : saPaidFor.toString();
+        for (final String prefix : new String[] { saPaidFor.getHostCard().toString(),
+                saPaidFor.getHostCard().getDisplayName(), saPaidFor.getHostCard().getTranslatedName() }) {
+            if (desc.startsWith(prefix + " - ")) {
+                desc = desc.substring(prefix.length() + 3);
+                break;
+            }
+        }
+        desc = desc.trim();
+        if (desc.equals(saPaidFor.getHostCard().getDisplayName())
+                || desc.equals(saPaidFor.getHostCard().getTranslatedName())) {
+            return "";
+        }
+        return desc;
     }
 
     private void applyMatrix() {

@@ -29,6 +29,33 @@ public class TextUtil {
     private static final StringBuilder changes = new StringBuilder();
     private static SimpleDateFormat simpleDate;
 
+    /**
+     * Marks the start of a run of text a GUI may highlight. Prompt messages are
+     * built in GUI-agnostic code but rendered very differently per platform —
+     * HTML on desktop, plain glyphs on mobile — so the builder marks which runs
+     * carry the answer and each GUI decides what to do with them. Control
+     * characters, so they can never collide with card or player names.
+     *
+     * @see #emphasize(Object)
+     * @see #stripEmphasis(String)
+     */
+    public static final char EMPHASIS_START = '\u0001';
+    /** Marks the end of a run started by {@link #EMPHASIS_START}. */
+    public static final char EMPHASIS_END = '\u0002';
+
+    /** Wraps a value in the emphasis markers. */
+    public static String emphasize(final Object value) {
+        return EMPHASIS_START + String.valueOf(value) + EMPHASIS_END;
+    }
+
+    /** Drops the emphasis markers, for consumers that render the text as-is. */
+    public static String stripEmphasis(final String text) {
+        if (text == null) {
+            return null;
+        }
+        return text.replace(String.valueOf(EMPHASIS_START), "").replace(String.valueOf(EMPHASIS_END), "");
+    }
+
     static ImmutableSortedMap<Integer,String> romanMap = ImmutableSortedMap.<Integer,String>naturalOrder()
     .put(1000, "M").put(900, "CM")
     .put(500, "D").put(400, "CD")
