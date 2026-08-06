@@ -109,6 +109,7 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
     private final JCheckBox cbGrayText = new OptionsCheckBox(localizer.getMessage("cbGrayText"));
     private final JCheckBox cbPauseWhileMinimized = new OptionsCheckBox(localizer.getMessage("cbPauseWhileMinimized"));
     private final JCheckBox cbCompactPrompt = new OptionsCheckBox(localizer.getMessage("cbCompactPrompt"));
+    private final JCheckBox cbFloatingPrompt = new OptionsCheckBox(localizer.getMessage("cbFloatingPrompt"));
     private final JCheckBox cbEscapeEndsTurn = new OptionsCheckBox(localizer.getMessage("cbEscapeEndsTurn"));
     private final JCheckBox cbHideReminderText = new OptionsCheckBox(localizer.getMessage("cbHideReminderText"));
     private final JCheckBox cbCardTextUseSansSerif = new OptionsCheckBox(localizer.getMessage("cbCardTextUseSansSerif"));
@@ -434,6 +435,9 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
 
         pnlPrefs.add(cbUiForTouchScreen, titleConstraints);
         pnlPrefs.add(new NoteLabel(localizer.getMessage("nlUiForTouchScreen")), descriptionConstraints);
+
+        pnlPrefs.add(cbFloatingPrompt, titleConstraints);
+        pnlPrefs.add(new NoteLabel(localizer.getMessage("nlFloatingPrompt")), descriptionConstraints);
 
         pnlPrefs.add(cbCompactPrompt, titleConstraints);
         pnlPrefs.add(new NoteLabel(localizer.getMessage("nlCompactPrompt")), descriptionConstraints);
@@ -1041,6 +1045,10 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
 
     public final JCheckBox getCbCompactPrompt() {
         return cbCompactPrompt;
+    }
+
+    public final JCheckBox getCbFloatingPrompt() {
+        return cbFloatingPrompt;
     }
 
     public final JCheckBox getCbEscapeEndsTurn() {

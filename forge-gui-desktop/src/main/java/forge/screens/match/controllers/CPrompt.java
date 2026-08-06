@@ -28,6 +28,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.util.List;
 
 import javax.swing.JButton;
 import javax.swing.Timer;
@@ -36,7 +37,9 @@ import forge.game.GameView;
 import forge.game.card.CardView;
 import forge.gui.FThreads;
 import forge.gui.framework.DragCell;
+import forge.gui.framework.EDocID;
 import forge.gui.framework.ICDoc;
+import forge.gui.framework.IVDoc;
 import forge.gui.framework.SDisplayUtil;
 import forge.gui.framework.SRearrangingUtil;
 import forge.localinstance.properties.ForgePreferences;
@@ -87,6 +90,12 @@ public class CPrompt implements ICDoc {
      */
     public void setInputRequired(final boolean required) {
         FThreads.assertExecutedByEdt(true);
+        if (!isFloatingEnabled()) {
+            //a docked prompt is always on screen, so it has nothing to show or hide.
+            //Outline its cell instead, so it still announces that it wants an answer.
+            setDockedHighlight(required);
+            return;
+        }
         if (hideTimer != null) {
             hideTimer.stop();
             hideTimer = null;
@@ -111,11 +120,24 @@ public class CPrompt implements ICDoc {
     }
 
     /**
+     * Puts the prompt where {@link ForgePreferences.FPref#UI_FLOATING_PROMPT} says it belongs.
+     * Called after the saved layout has been loaded, which re-docks every
+     * registered doc regardless of which mode is in force.
+     */
+    public void applyDockMode() {
+        if (isFloatingEnabled()) {
+            undockPrompt();
+        } else {
+            dockPrompt();
+        }
+    }
+
+    /**
      * Pulls the prompt out of whatever dock cell the saved layout put it in, so
      * it exists only as the floating window. Collapses the cell if the prompt
      * was the only thing in it, mirroring how floating zones undock.
      */
-    public void undockPrompt() {
+    private void undockPrompt() {
         final DragCell cell = view.getParentCell();
         if (cell != null) {
             cell.removeDoc(view);
@@ -131,12 +153,53 @@ public class CPrompt implements ICDoc {
         view.populateInto(prompt.getContentPanel());
     }
 
+    /**
+     * Makes sure the prompt has a cell to live in. The saved layout normally
+     * supplies one, but a layout written while the prompt was floating has no
+     * entry for it at all — so fall back to a cell that does exist, rather than
+     * leaving the match with no way to respond to it.
+     */
+    private void dockPrompt() {
+        closeFloatingPrompt();
+        if (view.getParentCell() != null) {
+            return;
+        }
+        final IVDoc<? extends ICDoc> anchor = EDocID.BUTTON_DOCK.getDoc();
+        DragCell target = anchor == null ? null : anchor.getParentCell();
+        if (target == null) {
+            final List<DragCell> cells = FView.SINGLETON_INSTANCE.getDragCells();
+            if (cells.isEmpty()) { return; }
+            target = cells.get(0);
+        }
+        target.addDoc(view);
+        target.setSelected(view);
+    }
+
+    /**
+     * Tints the docked prompt's cell in the prompt accent while the game is
+     * waiting on this player — the standing equivalent of the orange frame the
+     * floating window wears, and of the outline a field gets while its player is
+     * being waited on.
+     */
+    private void setDockedHighlight(final boolean on) {
+        final DragCell cell = view.getParentCell();
+        if (cell != null) {
+            cell.setBorderOverride(on ? VPrompt.ACCENT : null);
+        }
+    }
+
+    /** Whether the prompt shows as a floating window rather than a docked panel. */
+    private boolean isFloatingEnabled() {
+        return FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.UI_FLOATING_PROMPT);
+    }
+
     /** Tears the floating prompt down at the end of a match. */
     public void closeFloatingPrompt() {
         if (hideTimer != null) {
             hideTimer.stop();
             hideTimer = null;
         }
+        setDockedHighlight(false); //no-op while floating; the match is over either way
         if (floatingPrompt != null) {
             floatingPrompt.setVisible(false);
             floatingPrompt.dispose();
@@ -234,7 +297,7 @@ public class CPrompt implements ICDoc {
     }
 
     public void setMessage(final String s0, final CardView card) {
-        view.getTarMessage().setText(spaceRows(FSkin.encodeSymbols(s0, false)));
+        view.getTarMessage().setText(FSkin.encodeSymbols(spaceRows(s0), false));
         view.setCardView(card);
     }
 
@@ -242,10 +305,15 @@ public class CPrompt implements ICDoc {
      * Puts a blank line between the prompt's rows — priority, turn, phase, stack —
      * which read as a wall of text at the floating window's width otherwise. Runs
      * of line breaks collapse into one gap, so messages that already separate their
-     * paragraphs don't end up with several blank lines.
+     * paragraphs don't end up with several blank lines. Must run before
+     * {@link FSkin#encodeSymbols}, which turns every line break into a {@code <br>}
+     * of its own.
      */
-    private static String spaceRows(final String message) {
-        return message.replaceAll("[\r\n]+", "<br><br>");
+    private String spaceRows(final String message) {
+        if (!isFloatingEnabled()) {
+            return message; //a docked cell is short; the extra gaps would cost a row of text
+        }
+        return message.replaceAll("[\r\n]+", "\n\n");
     }
 
     /**

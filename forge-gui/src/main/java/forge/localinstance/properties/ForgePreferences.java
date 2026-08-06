@@ -103,6 +103,7 @@ public class ForgePreferences extends AbstractPreferences<ForgePreferences.FPref
         UI_LARGE_CARD_VIEWERS ("false"),
         UI_RANDOM_ART_IN_POOLS ("true"),
         UI_COMPACT_PROMPT ("false"),
+        UI_FLOATING_PROMPT ("true"),
         UI_COMPACT_TABS ("false"),
         UI_COMPACT_LIST_ITEMS ("false"),
         UI_SMALL_DECK_VIEWER ("false"),
