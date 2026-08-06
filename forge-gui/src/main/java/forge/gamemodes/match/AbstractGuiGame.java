@@ -526,6 +526,19 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
 
     private Timer awaitNextInputTimer;
     private TimerTask awaitNextInputTask;
+    private volatile boolean waitingOnOthers;
+
+    /**
+     * Whether the prompt currently says the game is waiting on somebody else, as
+     * opposed to asking the local player for something.
+     * <p>
+     * Button state can't answer that on its own: an input that is satisfied by
+     * clicking the board rather than pressing a button leaves both buttons
+     * disabled while its message is the only thing telling the player what to do.
+     */
+    public final boolean isWaitingOnOthers() {
+        return waitingOnOthers;
+    }
 
     @Override
     public final void awaitNextInput() {
@@ -561,6 +574,7 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
     }
 
     protected final String updatePromptForAwait(final PlayerView playerView) {
+        waitingOnOthers = true;
         // Append "Waiting for opponent..." below the yield prompt so the user keeps the
         // cancel-yield UI during opponent turns instead of losing it to the await prompt.
         String waitingForName = findWaitingForPlayerName(playerView);
@@ -680,6 +694,7 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
 
     @Override
     public final void cancelAwaitNextInput() {
+        waitingOnOthers = false; //an input is taking over the prompt
         if (awaitNextInputTimer == null) {
             return;
         }

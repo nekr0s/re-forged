@@ -932,8 +932,15 @@ public final class CMatchUI
             btn1.setFocusable(actualEnable1 && actualFocus1);
             btn2.setFocusable(actualEnable2 && !actualFocus1);
             // Show or hide the floating prompt before focusing, so the button
-            // being focused is already on screen.
-            getCPrompt().setInputRequired(actualEnable1 || actualEnable2);
+            // being focused is already on screen. An enabled button isn't the only
+            // thing worth showing: an input satisfied by clicking the board (who
+            // starts the game, choosing targets) disables both buttons until the
+            // click happens, and its message is the only thing saying so. Blank
+            // labels mean no input at all — game over, or the UI locked.
+            final boolean noInput = (label1 == null || label1.isEmpty())
+                    && (label2 == null || label2.isEmpty());
+            getCPrompt().setInputRequired(actualEnable1 || actualEnable2
+                    || (!noInput && !isWaitingOnOthers()));
             // ensure we don't steal focus from an overlay
             if (toFocus != null && !FNetOverlay.SINGLETON_INSTANCE.getTxtInput().hasFocus() ) {
                 toFocus.requestFocus(); // focus here even if another window has focus - shouldn't have to do it this way but some popups grab window focus
