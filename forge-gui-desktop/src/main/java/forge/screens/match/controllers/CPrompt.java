@@ -234,8 +234,18 @@ public class CPrompt implements ICDoc {
     }
 
     public void setMessage(final String s0, final CardView card) {
-        view.getTarMessage().setText(FSkin.encodeSymbols(s0, false));
+        view.getTarMessage().setText(spaceRows(FSkin.encodeSymbols(s0, false)));
         view.setCardView(card);
+    }
+
+    /**
+     * Puts a blank line between the prompt's rows — priority, turn, phase, stack —
+     * which read as a wall of text at the floating window's width otherwise. Runs
+     * of line breaks collapse into one gap, so messages that already separate their
+     * paragraphs don't end up with several blank lines.
+     */
+    private static String spaceRows(final String message) {
+        return message.replaceAll("[\r\n]+", "<br><br>");
     }
 
     /**
