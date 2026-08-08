@@ -293,7 +293,7 @@ public class CardPanel extends SkinnedPanel implements CardContainer, IDisposabl
     }
     public final void setSelected(final boolean isSelected0) {
         isSelected = isSelected0;
-        animateHoverLift(isSelected0 ? hoverLiftDistance() : 0);
+        animateHoverLift(isSelected0 && isPreferenceEnabled(FPref.UI_CARD_ANIMATIONS) ? hoverLiftDistance() : 0);
         repaint();
     }
 

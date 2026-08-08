@@ -19,6 +19,7 @@ package forge.screens.match.views;
 
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
@@ -120,7 +121,7 @@ public class VStack implements IVDoc<CStack> {
     @SuppressWarnings("serial")
     private final FScrollPane scroller = new FScrollPane(stackPanel, false,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER) {
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED) {
         @Override
         public Dimension getPreferredSize() {
             // The cascade runs as long as it likes now that it scrolls instead of
@@ -191,22 +192,34 @@ public class VStack implements IVDoc<CStack> {
 
     @Override
     public void populate() {
-        populateInto(parentCell.getBody());
+        populateInto(parentCell.getBody(), true);
+    }
+
+    /** Lays the cascade out into {@link FloatingStack}, whose title bar carries the text toggle. */
+    public void populateInto(final JPanel container) {
+        populateInto(container, false);
     }
 
     /**
      * Lays the cascade out into the given container. Used both for the docked
      * cell and for {@link FloatingStack}, so the two share one set of components.
+     *
+     * @param withTextToggle whether to put the text toggle in the button row —
+     *      a docked cell has no title bar to hang it off.
      */
-    public void populateInto(final JPanel container) {
+    private void populateInto(final JPanel container, final boolean withTextToggle) {
         container.removeAll();
         container.setLayout(new MigLayout("insets 0, gap 0"));
         //one scroll pane over both columns, so the cards and their text scroll together
         container.add(scroller, "cell 0 0, grow, push");
         //no fixed share of the width: both labels are set, so each button keeps the
         //room its own text needs and they split whatever the cascade leaves over
-        container.add(btnResolveTop, "cell 0 1, growx, gaptop 4, h " + RESOLVE_HEIGHT + "!, split 2");
+        container.add(btnResolveTop, "cell 0 1, growx, gaptop 4, h " + RESOLVE_HEIGHT + "!, split "
+                + (withTextToggle ? 3 : 2));
         container.add(btnResolveAll, "growx, gapleft 4, h " + RESOLVE_HEIGHT + "!");
+        if (withTextToggle) {
+            container.add(btnToggleText, "gapleft 4, w " + RESOLVE_HEIGHT + "!, h " + RESOLVE_HEIGHT + "!");
+        }
     }
 
     /** The title-bar control that opens and closes the text view. */
@@ -532,10 +545,21 @@ public class VStack implements IVDoc<CStack> {
             return Math.max(STEP, visible.height - STEP);
         }
 
-        /** Both columns are laid out to the width on offer, so there is nothing to scroll sideways. */
+        /**
+         * Both columns lay out to the width on offer, so there is nothing to scroll
+         * sideways — until the width on offer is too small to hold them, which a
+         * docked cell easily is. Then the cascade keeps its size and scrolls, rather
+         * than having the cards cut off down their right edge.
+         */
         @Override
         public boolean getScrollableTracksViewportWidth() {
-            return true;
+            final Container viewport = getParent();
+            return viewport == null || viewport.getWidth() >= minimumWidth();
+        }
+
+        /** Narrowest the two columns will go before the panel starts scrolling sideways. */
+        private int minimumWidth() {
+            return showText ? CARD_WIDTH + COLUMN_GAP + TEXT_PANEL_WIDTH : CARD_WIDTH;
         }
 
         @Override
