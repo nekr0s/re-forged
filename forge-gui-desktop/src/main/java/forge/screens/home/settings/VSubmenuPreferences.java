@@ -93,6 +93,7 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
     private final JCheckBox cbShowActionableHighlights = new OptionsCheckBox(localizer.getMessage("cbShowActionableHighlights"));
     private final JCheckBox cbShowAutoTapPreview = new OptionsCheckBox(localizer.getMessage("cbShowAutoTapPreview"));
     private final JCheckBox cbShowLinkedExileCards = new OptionsCheckBox(localizer.getMessage("cbShowLinkedExileCards"));
+    private final JCheckBox cbCardAnimations = new OptionsCheckBox(localizer.getMessage("cbCardAnimations"));
     private final FTextField txtActionableHighlightColor = new FTextField.Builder().ghostText("FFFFFF").maxLength(6).build();
     private final JCheckBox cbLargeCardViewers = new OptionsCheckBox(localizer.getMessage("cbLargeCardViewers"));
     private final JCheckBox cbSmallDeckViewer = new OptionsCheckBox(localizer.getMessage("cbSmallDeckViewer"));
@@ -110,6 +111,7 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
     private final JCheckBox cbPauseWhileMinimized = new OptionsCheckBox(localizer.getMessage("cbPauseWhileMinimized"));
     private final JCheckBox cbCompactPrompt = new OptionsCheckBox(localizer.getMessage("cbCompactPrompt"));
     private final JCheckBox cbFloatingPrompt = new OptionsCheckBox(localizer.getMessage("cbFloatingPrompt"));
+    private final JCheckBox cbFloatingStack = new OptionsCheckBox(localizer.getMessage("cbFloatingStack"));
     private final JCheckBox cbEscapeEndsTurn = new OptionsCheckBox(localizer.getMessage("cbEscapeEndsTurn"));
     private final JCheckBox cbHideReminderText = new OptionsCheckBox(localizer.getMessage("cbHideReminderText"));
     private final JCheckBox cbCardTextUseSansSerif = new OptionsCheckBox(localizer.getMessage("cbCardTextUseSansSerif"));
@@ -421,6 +423,9 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
         pnlPrefs.add(getActionableHighlightColorPanel(), titleConstraints + ", h 26px!");
         pnlPrefs.add(new NoteLabel(localizer.getMessage("nlActionableHighlightColor")), descriptionConstraints);
 
+        pnlPrefs.add(cbCardAnimations, titleConstraints);
+        pnlPrefs.add(new NoteLabel(localizer.getMessage("nlCardAnimations")), descriptionConstraints);
+
         pnlPrefs.add(cbShowLinkedExileCards, titleConstraints);
         pnlPrefs.add(new NoteLabel(localizer.getMessage("nlShowLinkedExileCards")), descriptionConstraints);
 
@@ -438,6 +443,9 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
 
         pnlPrefs.add(cbFloatingPrompt, titleConstraints);
         pnlPrefs.add(new NoteLabel(localizer.getMessage("nlFloatingPrompt")), descriptionConstraints);
+
+        pnlPrefs.add(cbFloatingStack, titleConstraints);
+        pnlPrefs.add(new NoteLabel(localizer.getMessage("nlFloatingStack")), descriptionConstraints);
 
         pnlPrefs.add(cbCompactPrompt, titleConstraints);
         pnlPrefs.add(new NoteLabel(localizer.getMessage("nlCompactPrompt")), descriptionConstraints);
@@ -850,6 +858,10 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
         return cbShowLinkedExileCards;
     }
 
+    public JCheckBox getCbCardAnimations() {
+        return cbCardAnimations;
+    }
+
     /** @return text field holding the hex color for actionable highlights */
     public FTextField getTxtActionableHighlightColor() {
         return txtActionableHighlightColor;
@@ -1049,6 +1061,10 @@ public enum VSubmenuPreferences implements IVSubmenu<CSubmenuPreferences> {
 
     public final JCheckBox getCbFloatingPrompt() {
         return cbFloatingPrompt;
+    }
+
+    public final JCheckBox getCbFloatingStack() {
+        return cbFloatingStack;
     }
 
     public final JCheckBox getCbEscapeEndsTurn() {

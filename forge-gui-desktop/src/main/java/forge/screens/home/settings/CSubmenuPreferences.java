@@ -112,6 +112,7 @@ public enum CSubmenuPreferences implements ICDoc {
         lstControls.add(Pair.of(view.getCbShowActionableHighlights(), FPref.UI_SHOW_ACTIONABLE_HIGHLIGHTS));
         lstControls.add(Pair.of(view.getCbShowAutoTapPreview(), FPref.UI_SHOW_AUTOTAP_PREVIEW));
         lstControls.add(Pair.of(view.getCbShowLinkedExileCards(), FPref.UI_SHOW_LINKED_EXILE_CARDS));
+        lstControls.add(Pair.of(view.getCbCardAnimations(), FPref.UI_CARD_ANIMATIONS));
         lstControls.add(Pair.of(view.getCbLargeCardViewers(), FPref.UI_LARGE_CARD_VIEWERS));
         lstControls.add(Pair.of(view.getCbSmallDeckViewer(), FPref.UI_SMALL_DECK_VIEWER));
         lstControls.add(Pair.of(view.getCbRandomArtInPools(), FPref.UI_RANDOM_ART_IN_POOLS));
@@ -145,6 +146,7 @@ public enum CSubmenuPreferences implements ICDoc {
         lstControls.add(Pair.of(view.getCbWorkshopSyntax(), FPref.DEV_WORKSHOP_SYNTAX));
 
         lstControls.add(Pair.of(view.getCbFloatingPrompt(), FPref.UI_FLOATING_PROMPT));
+        lstControls.add(Pair.of(view.getCbFloatingStack(), FPref.UI_FLOATING_STACK));
         lstControls.add(Pair.of(view.getCbCompactPrompt(), FPref.UI_COMPACT_PROMPT));
         lstControls.add(Pair.of(view.getCbHideReminderText(), FPref.UI_HIDE_REMINDER_TEXT));
         lstControls.add(Pair.of(view.getCbCardTextUseSansSerif(), FPref.UI_CARD_IMAGE_RENDER_USE_SANS_SERIF_FONT));

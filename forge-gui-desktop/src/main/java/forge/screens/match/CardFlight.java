@@ -30,6 +30,8 @@ import javax.swing.SwingUtilities;
 import forge.Singletons;
 import forge.game.card.CardView;
 import forge.game.player.PlayerView;
+import forge.localinstance.properties.ForgePreferences.FPref;
+import forge.model.FModel;
 import forge.screens.match.views.VField;
 import forge.screens.match.views.VHand;
 import forge.view.arcane.CardPanel;
@@ -141,6 +143,7 @@ public final class CardFlight {
     private boolean fly(final CardView card, final Rectangle origin, final Point targetOnScreen,
             final int targetWidth, final CardPanel placeholder) {
         if (card == null || origin == null || targetOnScreen == null || targetWidth <= 0) { return false; }
+        if (!FModel.getPreferences().getPrefBoolean(FPref.UI_CARD_ANIMATIONS)) { return false; }
         if (!Singletons.getView().getFrame().isShowing() || !matchUI.isCurrentScreen()) { return false; }
 
         final JLayeredPane pane = layeredPane();
