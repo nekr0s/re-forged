@@ -203,6 +203,17 @@ public final class FServerManager implements IHasForgeLog {
         return localLobby.getController(index);
     }
 
+    IGameController getController(final int index, final String matchId) {
+        if (matchId != null) {
+            final HostedMatch match = localLobby.getMatch(matchId);
+            if (match != null && match.gameControllers != null) {
+                final LobbySlot slot = localLobby.getSlot(index);
+                return match.gameControllers.get(slot);
+            }
+        }
+        return localLobby.getController(index);
+    }
+
     /**
      * Get the singleton instance of {@link FServerManager}.
      *
@@ -411,10 +422,14 @@ public final class FServerManager implements IHasForgeLog {
      * ...) is blocked on those methods not being null-safe.
      */
     public AfkTimeout armAfkTimeout(final PlayerControllerHuman controller, final InputSynchronized input) {
+        return armAfkTimeout(controller, input, null);
+    }
+
+    public AfkTimeout armAfkTimeout(final PlayerControllerHuman controller, final InputSynchronized input, final String matchId) {
         if (!isHosting() || localLobby == null) {
             return AfkTimeout.NOOP;
         }
-        final HostedMatch hostedMatch = localLobby.getHostedMatch();
+        final HostedMatch hostedMatch = matchId != null ? localLobby.getMatch(matchId) : localLobby.getHostedMatch();
         if (hostedMatch == null || controller.getGame() != hostedMatch.getGame()) {
             // Input belongs to a side-game the host started while waiting (e.g. local vs AI)
             return AfkTimeout.NOOP;
@@ -569,6 +584,28 @@ public final class FServerManager implements IHasForgeLog {
         return null;
     }
 
+    public IGuiGame getGui(final int index, final String matchId) {
+        final LobbySlot slot = localLobby.getSlot(index);
+        final LobbySlotType type = slot.getType();
+        if (type == LobbySlotType.LOCAL) {
+            final IGuiGame gui = GuiBase.getInterface().getNewGuiGame();
+            gui.setNetGame();
+            return gui;
+        } else if (type == LobbySlotType.REMOTE) {
+            final RemoteClient client = findClientByIndex(index);
+            if (client != null) {
+                RemoteClientGuiGame gui = client.getMatchGui(matchId);
+                if (gui == null) {
+                    // TODO: Task 6 will add RemoteClientGuiGame(client, matchId) constructor
+                    gui = new RemoteClientGuiGame(client);
+                    client.setMatchGui(matchId, gui);
+                }
+                return gui;
+            }
+        }
+        return null;
+    }
+
     /**
      * Look up a connected client by lobby slot index. Public for test harnesses
      * that have a slot index but not a RemoteClient; production code typically
@@ -589,6 +626,15 @@ public final class FServerManager implements IHasForgeLog {
         }
         for (final RemoteClient client : disconnectedClients.values()) {
             client.setGui(null);
+        }
+    }
+
+    public void clearPlayerGuis(final String matchId) {
+        for (final RemoteClient client : clients.values()) {
+            client.removeMatchGui(matchId);
+        }
+        for (final RemoteClient client : disconnectedClients.values()) {
+            client.removeMatchGui(matchId);
         }
     }
 
@@ -975,9 +1021,17 @@ public final class FServerManager implements IHasForgeLog {
     public void convertToAI(final RemoteClient client) {
         final int slotIndex = client.getIndex();
         final PlayerControllerHuman pch = findRemoteController(slotIndex);
-        // The instanceof check filters out LOCAL host slots — only convert remote players
         if (pch == null || !(pch.getGui() instanceof RemoteClientGuiGame)) { return; }
-        final HostedMatch hostedMatch = localLobby.getHostedMatch();
+
+        // Find the match this controller's game belongs to
+        final Game controllerGame = pch.getPlayer().getGame();
+        HostedMatch hostedMatch = null;
+        for (final HostedMatch m : localLobby.getActiveMatches().getAll()) {
+            if (m.getGame() == controllerGame) {
+                hostedMatch = m;
+                break;
+            }
+        }
         if (hostedMatch == null) { return; }
         final Game game = hostedMatch.getGame();
         if (game == null) { return; }
@@ -988,7 +1042,6 @@ public final class FServerManager implements IHasForgeLog {
         p.dangerouslySetController(aiCtrl);
         netLog.info("[Reconnect] Converted slot {} ({}) to AI controller", slotIndex, p.getName());
 
-        // Clear InputQueue to unblock the game thread (waiting on cdlDone)
         pch.getInputQueue().clearInputs();
         netLog.info("[Reconnect] Cleared input queue for slot {}", slotIndex);
     }
