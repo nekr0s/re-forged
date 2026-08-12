@@ -48,6 +48,7 @@ import java.util.*;
 import java.util.Map.Entry;
 
 public class HostedMatch {
+    private final String matchId = UUID.randomUUID().toString();
     private Match match;
     private Game game;
     private String title;
@@ -66,6 +67,10 @@ public class HostedMatch {
     public int subGameCount = 0;
 
     public HostedMatch() {}
+
+    public String getMatchId() {
+        return matchId;
+    }
 
     public void setStartGameHook(Runnable hook) {
         startGameHook = hook;
