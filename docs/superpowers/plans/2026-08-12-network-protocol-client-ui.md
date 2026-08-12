@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the network protocol messages, client-side event handling, and desktop UI that make tournaments playable over the network — tournament panel with standings/pairings, STANDBY display with ready/AFK timer, spectate UI, and tournament WinLose screen.
+**Goal:** Add the network protocol messages, client-side event handling, and desktop UI that make tournaments playable over the network — tournament panel with standings/pairings, between-round standby display with ready/AFK timer, spectate UI, and tournament WinLose screen.
 
 **Architecture:** Extend `NetworkEventView` with tournament state. Add 8 new `NetEvent` classes for tournament communication. Extend `IDraftEventHandler` to dispatch tournament events. Add tournament UI panel to `VLobby`, tournament event handlers to `CLobby`, and a tournament WinLose screen.
 
@@ -23,7 +23,7 @@
 | `forge-gui/.../net/event/TournamentStartEvent.java` | Server→All: tournament begins |
 | `forge-gui/.../net/event/MatchStartedEvent.java` | Server→All: a pairing match has started |
 | `forge-gui/.../net/event/MatchCompleteEvent.java` | Server→All: a pairing match has a result |
-| `forge-gui/.../net/event/RoundCompleteEvent.java` | Server→All: round done, entering STANDBY |
+| `forge-gui/.../net/event/RoundCompleteEvent.java` | Server→All: round done, back to TOURNAMENT_IN_PROGRESS (standby) |
 | `forge-gui/.../net/event/TournamentCompleteEvent.java` | Server→All: tournament over, final standings |
 | `forge-gui/.../net/event/SpectateRequestEvent.java` | Client→Server: request to spectate a match |
 | `forge-gui/.../net/event/SpectateApprovedEvent.java` | Server→Client: spectating approved |
@@ -41,7 +41,7 @@
 | `forge-gui/.../gui/interfaces/IDraftEventHandler.java` | Add tournament event dispatch methods |
 | `forge-gui/.../net/client/FGameClient.java` | Route tournament events via `draftHandler.dispatch()` |
 | `forge-gui-desktop/.../home/CLobby.java` | Tournament event handlers, state tracking |
-| `forge-gui-desktop/.../home/VLobby.java` | Tournament panel UI, spectate buttons, STANDBY display |
+| `forge-gui-desktop/.../home/VLobby.java` | Tournament panel UI, spectate buttons, between-round standby display |
 | `forge-gui-desktop/.../match/ViewWinLose.java` | Add tournament case to WinLose controller selection |
 | `forge-gui/.../net/server/ServerGameLobby.java` | Broadcast tournament events on phase changes |
 | `forge-gui/.../net/server/FServerManager.java` | Handle spectate request/approved/leave events |
@@ -581,7 +581,7 @@ In `onMatchComplete()`, after `tournament.reportMatchCompletion(pairing)`:
             new forge.gamemodes.net.event.MatchCompleteEvent(matchId, winnerName, ""));
 ```
 
-In `enterStandby()`, after setting phase:
+In `enterStandby()` (which sets phase back to `TOURNAMENT_IN_PROGRESS`), after setting phase:
 
 ```java
         lobby.broadcastTournamentEvent(
@@ -907,8 +907,8 @@ In `updateActionButtons()` (lines 921-949), add tournament button logic:
                     // Tournament mode buttons
                     pnlStart.setLayout(new MigLayout("insets 0, gap 0"));
                     pnlStart.add(btnCancelTournament, "w " + EVENT_BTN_WIDTH + "px!, h " + EVENT_BTN_HEIGHT + "px!");
-                    // During STANDBY, show "Start Next Round" (auto-enabled when all ready)
-                    // During TOURNAMENT_IN_PROGRESS, no start buttons (matches auto-run)
+                    // During TOURNAMENT_IN_PROGRESS (standby), show "Start Next Round" (auto-enabled when all ready)
+                    // During ROUND_IN_PROGRESS, no start buttons (matches auto-run)
                 } else {
                     // Existing limited mode buttons + Start Tournament option
                     pnlStart.setLayout(new MigLayout("insets 0, gap 0"));
@@ -1209,9 +1209,9 @@ This plan implements the network protocol and client UI for tournament mode:
 4. **IDraftEventHandler extension** — dispatch routes for all tournament events
 5. **Server broadcasting** — `ServerTournamentController` broadcasts events on phase transitions
 6. **CLobby tournament handlers** — state tracking, event handlers, spectate request
-7. **VLobby tournament panel** — standings, pairings, spectate buttons, STANDBY display, host controls
+7. **VLobby tournament panel** — standings, pairings, spectate buttons, between-round standby display, host controls
 8. **Tournament WinLose UI** — `NetworkTournamentWinLose` controller, wired into `ViewWinLose`
 9. **Server spectate handling** — request/approved/leave event processing
 10. **Full regression** — all existing and new tests pass
 
-After all three plans are complete, the full tournament mode is functional: 4 players can join a sealed/draft event, build decks, and play a round-robin tournament with parallel 1v1 matches, spectating, STANDBY phases, AFK enforcement, and OMW% tiebreakers.
+After all three plans are complete, the full tournament mode is functional: 4 players can join a sealed/draft event, build decks, and play a round-robin tournament with parallel 1v1 matches, spectating, between-round standby phases, AFK enforcement, and OMW% tiebreakers.

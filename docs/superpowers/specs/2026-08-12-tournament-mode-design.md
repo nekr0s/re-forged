@@ -19,7 +19,7 @@ The design also addresses a deeper architectural limitation: the server currentl
 - **Parallel matches** — two 1v1 matches run simultaneously per round (for 4 players)
 - **Spectating** — players who finish their match early can spectate ongoing matches over the network
 - **OMW% tiebreaker** — opponent match win percentage used to break ties in standings
-- **STANDBY phase between rounds** — players can edit decks or take a break, mark themselves ready, with AFK timer enforcement
+- **Between-round standby within TOURNAMENT_IN_PROGRESS** — players can edit decks or take a break, mark themselves ready, with AFK timer enforcement
 - **Desktop only** for initial version; mobile gets a "not supported" message
 
 ## Architecture
@@ -149,15 +149,17 @@ NetworkEvent
 
 ```
 LOBBY_GATHER -> POOL_DISTRIBUTION -> TOURNAMENT_IN_PROGRESS
-  -> (STANDBY -> TOURNAMENT_IN_PROGRESS)* -> TOURNAMENT_COMPLETE
+  -> (ROUND_IN_PROGRESS -> TOURNAMENT_IN_PROGRESS)* -> TOURNAMENT_COMPLETE
 ```
 
 Draft events: `LOBBY_GATHER -> DRAFTING -> POOL_DISTRIBUTION -> TOURNAMENT_IN_PROGRESS -> ...`
 
+`TOURNAMENT_IN_PROGRESS` serves double duty: it's both the initial entry state and the between-rounds standby state (where players edit decks, mark ready, and AFK timer applies). When a round's matches start, the phase moves to `ROUND_IN_PROGRESS`. When all matches in a round complete, the phase returns to `TOURNAMENT_IN_PROGRESS` for the next standby period. After the final round, the phase moves to `TOURNAMENT_COMPLETE`.
+
 **EventPhase final values:**
 
 ```
-LOBBY_GATHER, DRAFTING, POOL_DISTRIBUTION, TOURNAMENT_IN_PROGRESS, STANDBY, TOURNAMENT_COMPLETE
+LOBBY_GATHER, DRAFTING, POOL_DISTRIBUTION, TOURNAMENT_IN_PROGRESS, ROUND_IN_PROGRESS, TOURNAMENT_COMPLETE
 ```
 
 **EventParticipant Extension:**
@@ -176,10 +178,10 @@ When pools are distributed and players build decks, each player's built deck is 
 ServerTournamentController
   + event: NetworkEvent
   + tournament: TournamentRoundRobin
-  + startTournament()     — initializes round-robin, generates first round pairings
-  + startNextRound()      — starts all pairings for the current round (parallel matches)
+  + startTournament()     — initializes round-robin, generates first round pairings, enters TOURNAMENT_IN_PROGRESS (standby)
+  + startNextRound()      — moves to ROUND_IN_PROGRESS, starts all pairings for the current round (parallel matches)
   + onMatchComplete(matchId, outcome)  — records result, checks if round complete
-  + onAllMatchesComplete() — transitions to STANDBY, starts AFK timer
+  + onAllMatchesComplete() — transitions back to TOURNAMENT_IN_PROGRESS (standby), starts AFK timer
   + onPlayerReady(slotIndex) — marks player ready, checks if all ready
   + onAfkTimerExpired() — applies losses to not-ready players, byes to their opponents, starts next round
   + isRoundComplete()     — all pairings in current round have results
@@ -191,14 +193,14 @@ ServerTournamentController
 **Tournament Flow:**
 
 1. After all players have built decks and are ready, host clicks "Start Tournament"
-2. `startTournament()` creates `TournamentRoundRobin` from participants, generates round 1 pairings
-3. For each pairing, creates a 1v1 `HostedMatch` via the new multi-match `startMatch()` (Section 1)
+2. `startTournament()` creates `TournamentRoundRobin` from participants, sets phase to `TOURNAMENT_IN_PROGRESS` (initial standby), generates round 1 pairings
+3. For each pairing, creates a 1v1 `HostedMatch` via the new multi-match `startMatch()` (Section 1), moves to `ROUND_IN_PROGRESS`
 4. For 4 players: 2 matches start in parallel (Players A vs B, Players C vs D)
 5. As each match completes, `onMatchComplete()` records the winner via `tournament.reportMatchCompletion()`
-6. When both matches complete -> `onAllMatchesComplete()` -> transitions to STANDBY
+6. When both matches complete -> `onAllMatchesComplete()` -> transitions back to `TOURNAMENT_IN_PROGRESS` (standby)
 7. Players edit decks, mark ready, AFK timer enforces progress
-8. When all ready (or AFK penalties applied) -> `startNextRound()` generates next pairings (A vs C, B vs D)
-9. After 3 rounds (6 total pairings), `isTournamentComplete()` -> standings displayed, champion declared
+8. When all ready (or AFK penalties applied) -> `startNextRound()` moves to `ROUND_IN_PROGRESS`, generates next pairings (A vs C, B vs D)
+9. After 3 rounds (6 total pairings), `isTournamentComplete()` -> `TOURNAMENT_COMPLETE`, standings displayed, champion declared
 
 **OMW% Tiebreaker:**
 
@@ -218,12 +220,12 @@ Each player builds their deck once from their sealed/draft pool during the `POOL
 
 - Between games within a match (best-of-3/5): Sideboarding allowed (existing `GameType.Sealed`/`Draft` already supports `canSideboard=true`)
 - Between matches (rounds): Players can freely edit their deck — swap cards between main deck and sideboard using their full card pool. This applies to all formats including best-of-1
-- During STANDBY phase, players open `CEditorLimited` with their full pool to edit. The deck is re-registered on their `EventParticipant` before the next round starts
+- During `TOURNAMENT_IN_PROGRESS` (standby), players open `CEditorLimited` with their full pool to edit. The deck is re-registered on their `EventParticipant` before the next round starts
 - The same built deck is reused for all matches in the tournament (standard for sealed/draft tournaments)
 
-**STANDBY Phase:**
+**Between-Round Standby (within TOURNAMENT_IN_PROGRESS):**
 
-After a round completes, the tournament enters `STANDBY`:
+After a round completes, the tournament returns to `TOURNAMENT_IN_PROGRESS` (acting as standby):
 
 - All players return to the lobby and are marked not-ready
 - Players can edit their deck (open `CEditorLimited` with full pool) or take a break
@@ -232,10 +234,10 @@ After a round completes, the tournament enters `STANDBY`:
   - Any not-ready player receives an automatic loss for the next round
   - Their scheduled opponent receives a bye (counts as a win)
   - If both players in a pairing are AFK, both receive losses and the pairing is void
-- When all players are ready (or AFK penalties applied), the next round auto-starts
+- When all players are ready (or AFK penalties applied), the next round auto-starts (moves to `ROUND_IN_PROGRESS`)
 - Host can extend/reset the AFK timer or force-start the next round
 
-The AFK timer reuses the existing `armAfkTimeout()` infrastructure from `FServerManager`, scoped to the tournament's STANDBY phase.
+The AFK timer reuses the existing `armAfkTimeout()` infrastructure from `FServerManager`, scoped to the tournament's `TOURNAMENT_IN_PROGRESS` standby phase.
 
 **Tournament WinLose Controller:**
 
@@ -244,7 +246,7 @@ Instead of the standard "Quit/Continue/Restart" WinLose screen, tournament match
 - Shows match result (win/loss, game-by-game score)
 - Shows current tournament standings
 - If your match finished early and other matches are ongoing: "Spectate" button
-- If round is complete: transitions to STANDBY (host auto-starts next round when all ready)
+- If round is complete: transitions back to TOURNAMENT_IN_PROGRESS standby (host auto-starts next round when all ready)
 - If tournament is complete: final standings + "Return to Lobby"
 
 #### Key Files Affected
@@ -271,7 +273,7 @@ Clients currently receive a single `NetworkEventView` snapshot and have no conce
 
 ```
 NetworkEventView
-  (existing phase field already carries TOURNAMENT_IN_PROGRESS / STANDBY / TOURNAMENT_COMPLETE)
+  (existing phase field carries TOURNAMENT_IN_PROGRESS / ROUND_IN_PROGRESS / TOURNAMENT_COMPLETE)
   + currentRound: int                   (NEW)
   + totalRounds: int                    (NEW)
   + pairings: List<PairingView>         (NEW — current round's pairings)
@@ -293,7 +295,7 @@ These are broadcast via the existing `LobbyUpdateEvent` mechanism — no new cha
 | `TournamentStartEvent(eventId)` | Server -> All | Signals tournament beginning |
 | `MatchStartedEvent(matchId, playerA, playerB, round)` | Server -> All | Notifies all clients of a new pairing starting |
 | `MatchCompleteEvent(matchId, winner, score)` | Server -> All | Notifies all clients of a match result |
-| `RoundCompleteEvent(round)` | Server -> All | All matches in round finished, entering STANDBY |
+| `RoundCompleteEvent(round)` | Server -> All | All matches in round finished, back to TOURNAMENT_IN_PROGRESS (standby) |
 | `TournamentCompleteEvent(standings)` | Server -> All | Tournament over, final standings |
 | `SpectateRequestEvent(matchId)` | Client -> Server | Player requests to spectate an ongoing match |
 | `SpectateApprovedEvent(matchId)` | Server -> Client | Spectating granted, game events will follow |
@@ -303,7 +305,7 @@ These are broadcast via the existing `LobbyUpdateEvent` mechanism — no new cha
 
 New UI panel in the lobby (replaces/augments the event panel during tournament).
 
-TOURNAMENT_IN_PROGRESS state (with active matches):
+ROUND_IN_PROGRESS state (matches active):
 ```
 +---------------------------------------------+
 |  Tournament - Round 2 of 3                  |
@@ -322,7 +324,7 @@ TOURNAMENT_IN_PROGRESS state (with active matches):
 +---------------------------------------------+
 ```
 
-STANDBY state:
+TOURNAMENT_IN_PROGRESS (standby between rounds):
 ```
 +---------------------------------------------+
 |  Tournament - Round 2 Complete              |
@@ -350,14 +352,14 @@ COMPLETE state:
 - "Return to Lobby" button
 
 States:
-- TOURNAMENT_IN_PROGRESS: Shows standings, current pairings with spectate buttons. If your match is ongoing, you're in the match UI. If you finished early, spectate buttons are enabled for ongoing matches.
-- STANDBY: Shows standings from completed round, "Build Deck" button opens `CEditorLimited` with full pool, "Ready" button to mark ready. AFK timer visible to all. When all ready, next round auto-starts.
+- ROUND_IN_PROGRESS: Shows standings, current pairings with spectate buttons. If your match is ongoing, you're in the match UI. If you finished early, spectate buttons are enabled for ongoing matches.
+- TOURNAMENT_IN_PROGRESS (standby): Shows standings from completed round, "Build Deck" button opens `CEditorLimited` with full pool, "Ready" button to mark ready. AFK timer visible to all. When all ready, next round auto-starts (moves to ROUND_IN_PROGRESS).
 - TOURNAMENT_COMPLETE: Final standings, champion highlighted, "Return to Lobby" button.
 
 **Host Controls:**
 
 - "Start Tournament" button (replaces "Start Match" when tournament mode is configured)
-- During STANDBY: sees ready indicators, can extend/reset AFK timer, can force-start the next round (applying losses/byes to not-ready players)
+- During TOURNAMENT_IN_PROGRESS (standby): sees ready indicators, can extend/reset AFK timer, can force-start the next round (applying losses/byes to not-ready players)
 - Between rounds: auto-starts next round when all players ready
 - Can cancel tournament at any time (returns to normal lobby)
 
@@ -367,7 +369,7 @@ States:
 - `onTournamentUpdate(view)` — handles `NetworkEventView` changes with tournament fields, refreshes the tournament panel
 - `onMatchStarted(event)` — if the player is in the match, switches to match UI; if not, updates the spectate panel
 - `onMatchComplete(event)` — updates standings, shows result notification
-- `onRoundComplete(event)` — transitions to STANDBY display
+- `onRoundComplete(event)` — transitions to between-round standby display
 - `onTournamentComplete(event)` — shows final standings
 - `onSpectateApproved(event)` — switches `activeMatchId` to spectated match, opens spectator view
 - Tournament state tracked via `lastTournamentView` on `CLobby`
@@ -409,7 +411,7 @@ This keeps the existing event dispatch architecture — tournament events flow t
 - If all human players in a match disconnect: match is voided, no result recorded, pairing is re-scheduled in the next round (or opponent gets a bye if the player can't reconnect)
 - Other matches in the round are unaffected
 
-#### Player Disconnection During STANDBY
+#### Player Disconnection During Between-Round Standby
 
 - Player is marked not-ready (can't click ready if disconnected)
 - AFK timer applies normally — if it expires, they get a loss and their opponent a bye
@@ -445,7 +447,7 @@ Future enhancement: serialize `TournamentRoundRobin` state (it's already XStream
 
 Non-tournament sealed/draft events continue to work exactly as before:
 - `NetworkEvent.tournament` is null -> standard single-match flow
-- `EventPhase.TOURNAMENT_IN_PROGRESS` / `STANDBY` / `TOURNAMENT_COMPLETE` never appear
+- `EventPhase.TOURNAMENT_IN_PROGRESS` / `ROUND_IN_PROGRESS` / `TOURNAMENT_COMPLETE` never appear
 - The multi-match registry in `FServerManager` works fine with a single match (just a map with one entry)
 - Old clients connecting to a server running a tournament would need the updated client (protocol changes require both sides updated)
 
@@ -460,12 +462,12 @@ Non-tournament sealed/draft events continue to work exactly as before:
 **Integration tests (headless):**
 - Full tournament simulation: 4 AI players, best-of-1, verify standings and champion
 - Disconnection mid-match -> AI conversion -> match completes -> tournament continues
-- STANDBY -> AFK timer expiry -> next round starts with penalties
+- TOURNAMENT_IN_PROGRESS (standby) -> AFK timer expiry -> next round starts with penalties
 
 **Manual testing:**
 - 4-player network tournament with real clients
 - Spectating flow between matches
-- Deck editing during STANDBY
+- Deck editing during between-round standby
 - Host cancellation mid-tournament
 
 #### Scope Boundaries (Not Building)
@@ -481,9 +483,9 @@ Non-tournament sealed/draft events continue to work exactly as before:
 1. **Multi-match infrastructure** (Section 1) — FServerManager match registry, scoped cleanup/routing, GameLobby refactor
 2. **Client-side multi-match support** (Section 2) — per-client match GUI map, match-ID protocol, ReplyPool scoping
 3. **Network spectating** (Section 2) — WatchRemoteGame, spectator event flow
-4. **Tournament logic layer** (Section 3) — ServerTournamentController, NetworkEvent extension, STANDBY/AFK handling
+4. **Tournament logic layer** (Section 3) — ServerTournamentController, NetworkEvent extension, between-round standby/AFK handling
 5. **Network protocol & events** (Section 4) — new events, NetworkEventView extension, IDraftEventHandler extension
-6. **Client UI** (Section 4) — tournament panel, STANDBY display, spectate UI, host controls
+6. **Client UI** (Section 4) — tournament panel, between-round standby display, spectate UI, host controls
 7. **Tournament WinLose controller** (Section 3) — replaces standard WinLose for tournament matches
 8. **Testing** (Section 5) — unit, integration, manual
 

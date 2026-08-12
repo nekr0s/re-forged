@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the server-side tournament orchestration that manages round-robin pairings, parallel match creation, STANDBY phases between rounds with AFK enforcement, and standings with OMW% tiebreakers.
+**Goal:** Build the server-side tournament orchestration that manages round-robin pairings, parallel match creation, between-round standby phases with AFK enforcement, and standings with OMW% tiebreakers.
 
 **Architecture:** Reuse Forge's existing `TournamentRoundRobin` engine. Add a `ServerTournamentController` that lives on `NetworkEvent`, orchestrates match creation via Plan 1's multi-match infrastructure, and tracks results. Extend `EventPhase` and `EventParticipant` with tournament state. Add OMW% to `TournamentPlayer`.
 
@@ -20,14 +20,14 @@
 
 | File | Responsibility |
 |------|----------------|
-| `forge-gui/src/main/java/forge/gamemodes/net/server/ServerTournamentController.java` | Orchestrates tournament: creates pairings, starts matches, records results, manages STANDBY/AFK |
+| `forge-gui/.../net/server/ServerTournamentController.java` | Orchestrates tournament: creates pairings, starts matches, records results, manages between-round standby/AFK |
 | `forge-gui-desktop/src/test/java/forge/net/TournamentLogicTest.java` | Unit tests for OMW%, pairings, AFK penalties, bye handling |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
-| `forge-gui/.../net/EventPhase.java` | Add `TOURNAMENT_IN_PROGRESS`, `STANDBY`, `TOURNAMENT_COMPLETE` |
+| `forge-gui/.../net/EventPhase.java` | Add `TOURNAMENT_IN_PROGRESS`, `ROUND_IN_PROGRESS`, `TOURNAMENT_COMPLETE` |
 | `forge-gui/.../net/NetworkEvent.java` | Add `tournament` field (TournamentRoundRobin), `gamesPerMatch` field, `tournamentController` field |
 | `forge-gui/.../net/EventParticipant.java` | Add `tournamentPlayer`, `deck` fields |
 | `forge-gui/.../tournament/system/TournamentPlayer.java` | Add `getOMW()` method, `previousOpponentPlayers` tracking |
@@ -53,7 +53,7 @@ public enum EventPhase {
     DRAFTING,
     POOL_DISTRIBUTION,
     TOURNAMENT_IN_PROGRESS,
-    STANDBY,
+    ROUND_IN_PROGRESS,
     TOURNAMENT_COMPLETE
 }
 ```
@@ -67,7 +67,7 @@ Expected: BUILD SUCCESS
 
 ```bash
 git add forge-gui/src/main/java/forge/gamemodes/net/EventPhase.java
-git commit -m "feat: add TOURNAMENT_IN_PROGRESS, STANDBY, TOURNAMENT_COMPLETE to EventPhase"
+git commit -m "feat: add TOURNAMENT_IN_PROGRESS, ROUND_IN_PROGRESS, TOURNAMENT_COMPLETE to EventPhase"
 ```
 
 ---
@@ -358,7 +358,7 @@ git commit -m "feat: add tournament and gamesPerMatch fields to NetworkEvent"
 - Create: `forge-gui/src/main/java/forge/gamemodes/net/server/ServerTournamentController.java`
 - Test: `forge-gui-desktop/src/test/java/forge/net/TournamentLogicTest.java` (add tests)
 
-This is the core orchestration class. It manages the tournament lifecycle: creating pairings, starting matches, recording results, managing STANDBY, and applying AFK penalties.
+This is the core orchestration class. It manages the tournament lifecycle: creating pairings, starting matches, recording results, managing between-round standby, and applying AFK penalties.
 
 - [ ] **Step 1: Write ServerTournamentController**
 
@@ -390,7 +390,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Server-side controller for a network tournament.
  * Lives on the NetworkEvent and orchestrates match creation, result recording,
- * STANDBY phase management, and AFK enforcement.
+ * between-round standby management (within TOURNAMENT_IN_PROGRESS), and AFK enforcement.
  *
  * Depends on the multi-match infrastructure from Plan 1 (MatchRegistry, scoped
  * HostedMatch management, per-match RemoteClientGuiGame).
@@ -434,13 +434,15 @@ public class ServerTournamentController {
     }
 
     /**
-     * Start the tournament: initialize round-robin, generate first round pairings,
-     * start all matches for round 1 in parallel.
+     * Start the tournament: initialize round-robin, set phase to TOURNAMENT_IN_PROGRESS
+     * (initial standby), generate first round pairings, then start round 1 matches
+     * (moves to ROUND_IN_PROGRESS).
      */
     public synchronized void startTournament() {
         tournament.initializeTournament();
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
-        startRoundMatches();
+        // Immediately start the first round (no standby needed before round 1)
+        startNextRound();
     }
 
     /**
@@ -555,10 +557,11 @@ public class ServerTournamentController {
     }
 
     /**
-     * Enter STANDBY phase: mark all players not-ready, start AFK timer.
+     * Return to TOURNAMENT_IN_PROGRESS (between-round standby): mark all players
+     * not-ready, start AFK timer.
      */
     private void enterStandby() {
-        event.setPhase(EventPhase.STANDBY);
+        event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
         for (int i = 0; i < lobby.getNumberOfSlots(); i++) {
             lobby.getSlot(i).setIsReady(false);
         }
@@ -581,10 +584,11 @@ public class ServerTournamentController {
     }
 
     /**
-     * Called when a player marks themselves ready during STANDBY.
+     * Called when a player marks themselves ready during TOURNAMENT_IN_PROGRESS (standby).
      */
     public synchronized void onPlayerReady(int slotIndex) {
-        if (event.getPhase() != EventPhase.STANDBY) return;
+        // Only applies during between-round standby (TOURNAMENT_IN_PROGRESS, not during active rounds)
+        if (event.getPhase() != EventPhase.TOURNAMENT_IN_PROGRESS) return;
         // Check if all non-open slots are ready
         for (int i = 0; i < lobby.getNumberOfSlots(); i++) {
             if (lobby.getSlot(i).getType() != forge.gamemodes.match.LobbySlotType.OPEN) {
@@ -602,7 +606,7 @@ public class ServerTournamentController {
      * AFK timer expired — apply penalties to not-ready players and start next round.
      */
     private synchronized void onAfkTimerExpired() {
-        if (event.getPhase() != EventPhase.STANDBY) return;
+        if (event.getPhase() != EventPhase.TOURNAMENT_IN_PROGRESS) return;
 
         // Mark not-ready players as AFK (they get a loss for the next round)
         Set<Integer> afkSlots = new HashSet<>();
@@ -624,7 +628,7 @@ public class ServerTournamentController {
     }
 
     private void startNextRound() {
-        event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
+        event.setPhase(EventPhase.ROUND_IN_PROGRESS);
         // Generate next round pairings (completeRound was already called by reportMatchCompletion)
         startRoundMatches();
     }
@@ -899,13 +903,13 @@ Add after the existing `onMatchOver(String matchId)` override (from Plan 1):
 
 Note: This replaces the `onMatchOver(String matchId)` from Plan 1 Task 8. The super call goes to `GameLobby.onMatchOver(matchId)` which unregisters from the `MatchRegistry` and clears controllers if no matches remain.
 
-- [ ] **Step 4: Handle player ready during STANDBY**
+- [ ] **Step 4: Handle player ready during between-round standby**
 
 Add to `ServerGameLobby.java`:
 
 ```java
     /**
-     * Called when a player toggles ready during tournament STANDBY.
+     * Called when a player toggles ready during tournament between-round standby.
      */
     public void onPlayerReadyTournament(int slotIndex) {
         if (tournamentController != null) {
@@ -1166,11 +1170,11 @@ git commit -m "fix: regression fixes from tournament logic layer"
 
 This plan implements the server-side tournament orchestration:
 
-1. **EventPhase** — new phases: `TOURNAMENT_IN_PROGRESS`, `STANDBY`, `TOURNAMENT_COMPLETE`
+1. **EventPhase** — new phases: `TOURNAMENT_IN_PROGRESS`, `ROUND_IN_PROGRESS`, `TOURNAMENT_COMPLETE`
 2. **EventParticipant** — tournament player and deck tracking
 3. **TournamentPlayer** — OMW% tiebreaker calculation
 4. **NetworkEvent** — tournament and gamesPerMatch fields
-5. **ServerTournamentController** — full tournament lifecycle: pairings, parallel match creation, result recording, STANDBY with AFK timer, standings
+5. **ServerTournamentController** — full tournament lifecycle: pairings, parallel match creation, result recording, between-round standby (TOURNAMENT_IN_PROGRESS) with AFK timer, standings
 6. **ServerGameLobby** — tournament integration, scoped onMatchOver for tournament matches
 7. **NetworkTournamentWinLose** — auto-continue within match, report to controller on match complete
 8. **Tests** — round-robin pairings, byes, OMW%, standings sort, tie scenarios
