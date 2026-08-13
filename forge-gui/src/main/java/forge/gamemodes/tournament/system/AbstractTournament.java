@@ -132,6 +132,24 @@ public abstract class AbstractTournament implements Serializable {
         return allPlayers;
     }
 
+    public TournamentPlayer getPlayerByName(String name) {
+        for (TournamentPlayer tp : allPlayers) {
+            if (tp.getPlayer().getName().equals(name)) {
+                return tp;
+            }
+        }
+        return null;
+    }
+
+    public TournamentPlayer getPlayerByIndex(int index) {
+        for (TournamentPlayer tp : allPlayers) {
+            if (tp.getIndex() == index) {
+                return tp;
+            }
+        }
+        return null;
+    }
+
     public static List<RegisteredPlayer> registerTournamentPlayers(TournamentPairing pairing, DeckGroup decks) {
         List<RegisteredPlayer> registered = Lists.newArrayList();
         for (TournamentPlayer pl : pairing.getPairedPlayers()) {
