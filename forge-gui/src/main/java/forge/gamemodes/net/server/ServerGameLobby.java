@@ -505,4 +505,8 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
     public BoosterDraftHost getDraftHost() {
         return draftHost;
     }
+
+    void broadcastTournamentEvent(forge.gamemodes.net.event.NetEvent event) {
+        FServerManager.getInstance().broadcast(event);
+    }
 }

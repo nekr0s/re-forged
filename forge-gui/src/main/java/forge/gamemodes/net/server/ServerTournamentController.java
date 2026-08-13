@@ -63,6 +63,8 @@ public class ServerTournamentController {
 
     public synchronized void startTournament() {
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
+        lobby.broadcastTournamentEvent(
+            new forge.gamemodes.net.event.TournamentStartEvent(event.getEventId()));
         startRoundMatches();
     }
 
@@ -133,6 +135,13 @@ public class ServerTournamentController {
             trackedMatches.put(matchId, match);
             matchToPairing.put(matchId, pairing);
 
+            lobby.broadcastTournamentEvent(
+                new forge.gamemodes.net.event.MatchStartedEvent(
+                    matchId,
+                    pairedPlayers.get(0).getPlayer().getName(),
+                    pairedPlayers.get(1).getPlayer().getName(),
+                    tournament.getActiveRound()));
+
             int gamesPerMatch = event.getGamesPerMatch();
             if (match.getMatch() != null && match.getMatch().getRules() != null) {
                 match.getMatch().getRules().setGamesPerMatch(gamesPerMatch);
@@ -202,6 +211,11 @@ public class ServerTournamentController {
                 if (pairing != null) {
                     determineWinner(match, pairing);
                     tournament.reportMatchCompletion(pairing);
+
+                    String winnerName = pairing.getWinner() != null
+                        ? pairing.getWinner().getPlayer().getName() : null;
+                    lobby.broadcastTournamentEvent(
+                        new forge.gamemodes.net.event.MatchCompleteEvent(matchId, winnerName, ""));
                 }
                 trackedMatches.remove(matchId);
                 matchToPairing.remove(matchId);
@@ -259,7 +273,32 @@ public class ServerTournamentController {
         }
 
         server.broadcast(new MessageEvent(results.toString()));
+
+        java.util.List<forge.gamemodes.net.StandingView> finalStandings = buildFinalStandings();
+        lobby.broadcastTournamentEvent(
+            new forge.gamemodes.net.event.TournamentCompleteEvent(finalStandings, false));
+
         server.updateLobbyState();
+    }
+
+    private java.util.List<forge.gamemodes.net.StandingView> buildFinalStandings() {
+        List<TournamentPlayer> ranked = new ArrayList<>(tournament.getAllPlayers());
+        ranked.sort((a, b) -> {
+            int scoreCmp = Integer.compare(b.getScore(), a.getScore());
+            if (scoreCmp != 0) return scoreCmp;
+            return Double.compare(b.getOMW(tournament.getAllPlayers()), a.getOMW(tournament.getAllPlayers()));
+        });
+        List<forge.gamemodes.net.StandingView> views = new ArrayList<>();
+        for (TournamentPlayer tp : ranked) {
+            views.add(new forge.gamemodes.net.StandingView(
+                    tp.getPlayer().getName(),
+                    tp.getWins(),
+                    tp.getLosses(),
+                    tp.getByes(),
+                    tp.getScore(),
+                    tp.getOMWPercent(tournament.getAllPlayers())));
+        }
+        return views;
     }
 
     public void shutdown() {
@@ -271,5 +310,8 @@ public class ServerTournamentController {
         }
         trackedMatches.clear();
         matchToPairing.clear();
+
+        lobby.broadcastTournamentEvent(
+            new forge.gamemodes.net.event.TournamentCompleteEvent(buildFinalStandings(), true));
     }
 }
