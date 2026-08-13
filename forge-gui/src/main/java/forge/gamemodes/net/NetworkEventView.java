@@ -2,6 +2,7 @@ package forge.gamemodes.net;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Immutable, serializable snapshot of a {@link NetworkEvent} for transmission to clients.
@@ -18,10 +19,29 @@ public final class NetworkEventView implements Serializable {
     private final int pickTimerSeconds;
     private final String productDescription;
     private final int numRounds;
+    private final int currentRound;
+    private final int totalRounds;
+    private final java.util.List<PairingView> pairings;
+    private final java.util.List<StandingView> standings;
+    private final int gamesPerMatch;
+    private final java.util.Map<Integer, String> activeMatchIds;
 
+    // Backward-compat constructor (no tournament state)
     public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
-                            List<EventParticipant> participants, int pickTimerSeconds,
-                            String productDescription, int numRounds) {
+            List<EventParticipant> participants, int pickTimerSeconds,
+            String productDescription, int numRounds) {
+        this(eventId, format, phase, participants, pickTimerSeconds, productDescription, numRounds,
+                0, 0, java.util.Collections.emptyList(), java.util.Collections.emptyList(),
+                3, java.util.Collections.emptyMap());
+    }
+
+    // Full constructor with tournament state
+    public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
+            List<EventParticipant> participants, int pickTimerSeconds,
+            String productDescription, int numRounds,
+            int currentRound, int totalRounds,
+            List<PairingView> pairings, List<StandingView> standings,
+            int gamesPerMatch, Map<Integer, String> activeMatchIds) {
         this.eventId = eventId;
         this.format = format;
         this.phase = phase;
@@ -29,6 +49,12 @@ public final class NetworkEventView implements Serializable {
         this.pickTimerSeconds = pickTimerSeconds;
         this.productDescription = productDescription;
         this.numRounds = numRounds;
+        this.currentRound = currentRound;
+        this.totalRounds = totalRounds;
+        this.pairings = List.copyOf(pairings);
+        this.standings = List.copyOf(standings);
+        this.gamesPerMatch = gamesPerMatch;
+        this.activeMatchIds = Map.copyOf(activeMatchIds);
     }
 
     public String getEventId() { return eventId; }
@@ -38,4 +64,14 @@ public final class NetworkEventView implements Serializable {
     public int getPickTimerSeconds() { return pickTimerSeconds; }
     public String getProductDescription() { return productDescription; }
     public int getNumRounds() { return numRounds; }
+    public int getCurrentRound() { return currentRound; }
+    public int getTotalRounds() { return totalRounds; }
+    public List<PairingView> getPairings() { return pairings; }
+    public List<StandingView> getStandings() { return standings; }
+    public int getGamesPerMatch() { return gamesPerMatch; }
+    public Map<Integer, String> getActiveMatchIds() { return activeMatchIds; }
+
+    public boolean isTournamentActive() {
+        return totalRounds > 0 && !standings.isEmpty();
+    }
 }

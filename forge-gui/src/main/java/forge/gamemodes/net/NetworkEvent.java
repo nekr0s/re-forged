@@ -120,8 +120,56 @@ public final class NetworkEvent {
     }
 
     public NetworkEventView toView() {
+        int currentRound = 0;
+        int totalRounds = 0;
+        java.util.List<PairingView> pairings = java.util.Collections.emptyList();
+        java.util.List<StandingView> standings = java.util.Collections.emptyList();
+        java.util.Map<Integer, String> activeMatchIds = java.util.Collections.emptyMap();
+
+        if (tournament != null) {
+            currentRound = tournament.getActiveRound();
+            totalRounds = tournament.getTotalRounds();
+            pairings = buildPairingViews();
+            standings = buildStandingViews();
+        }
+
         return new NetworkEventView(eventId, format, phase,
-                participants, pickTimerSeconds, productDescription, numRounds);
+                participants, pickTimerSeconds, productDescription, numRounds,
+                currentRound, totalRounds, pairings, standings,
+                gamesPerMatch, activeMatchIds);
+    }
+
+    private java.util.List<PairingView> buildPairingViews() {
+        java.util.List<PairingView> views = new java.util.ArrayList<>();
+        for (var pairing : tournament.getActivePairings()) {
+            var players = pairing.getPairedPlayers();
+            String playerA = players.size() > 0 ? players.get(0).getPlayer().getName() : "?";
+            String playerB = players.size() > 1 ? players.get(1).getPlayer().getName() : "?";
+            String winner = pairing.getWinner() != null ? pairing.getWinner().getPlayer().getName() : null;
+            var status = pairing.isBye()
+                    ? PairingView.PairingStatus.BYE
+                    : (pairing.getWinner() != null
+                        ? PairingView.PairingStatus.COMPLETE
+                        : PairingView.PairingStatus.ONGOING);
+            views.add(new PairingView(playerA, playerB, null, status, winner));
+        }
+        return views;
+    }
+
+    private java.util.List<StandingView> buildStandingViews() {
+        java.util.List<StandingView> views = new java.util.ArrayList<>();
+        var sorted = new java.util.ArrayList<>(tournament.getAllPlayers());
+        sorted.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
+        for (var tp : sorted) {
+            views.add(new StandingView(
+                    tp.getPlayer().getName(),
+                    tp.getWins(),
+                    tp.getLosses(),
+                    tp.getByes(),
+                    tp.getScore(),
+                    tp.getOMWPercent(tournament.getAllPlayers())));
+        }
+        return views;
     }
 
     /** An event id paired with its display label, e.g., for dialog-driven event selection. */
