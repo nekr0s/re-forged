@@ -517,6 +517,40 @@ public final class FServerManager implements IHasForgeLog {
         return this.localLobby != null && this.localLobby.isMatchActive();
     }
 
+    /**
+     * Handle a spectate request from a client.
+     */
+    public void handleSpectateRequest(final String matchId, final RemoteClient client) {
+        if (localLobby == null) {
+            client.send(new SpectateApprovedEvent(null));
+            return;
+        }
+        final HostedMatch match = localLobby.getMatch(matchId);
+        if (match == null || match.getGame() == null) {
+            client.send(new SpectateApprovedEvent(null));
+            return;
+        }
+
+        final RemoteClientGuiGame spectatorGui = new RemoteClientGuiGame(client, matchId);
+        final String spectateKey = "spectate:" + matchId;
+        client.setMatchGui(spectateKey, spectatorGui);
+        client.setActiveMatchId(spectateKey);
+
+        match.registerNetworkSpectator(spectatorGui);
+
+        client.send(new SpectateApprovedEvent(matchId));
+        netLog.info("Client {} now spectating match {}", client.getIndex(), matchId);
+    }
+
+    /**
+     * Handle a spectate leave from a client.
+     */
+    public void handleSpectateLeave(final String matchId, final RemoteClient client) {
+        final String spectateKey = "spectate:" + matchId;
+        client.removeMatchGui(spectateKey);
+        netLog.info("Client {} stopped spectating match {}", client.getIndex(), matchId);
+    }
+
     public void setLobbyListener(final ILobbyListener listener) {
         this.lobbyListener = listener;
     }
@@ -1236,6 +1270,12 @@ public final class FServerManager implements IHasForgeLog {
                 if (localLobby != null) {
                     localLobby.handleDraftPick(pickEvent, client.getIndex());
                 }
+                return;
+            } else if (msg instanceof SpectateRequestEvent req) {
+                handleSpectateRequest(req.getMatchId(), client);
+                return;
+            } else if (msg instanceof SpectateLeaveEvent leave) {
+                handleSpectateLeave(leave.getMatchId(), client);
                 return;
             }
             // Note: MessageEvent is handled by MessageHandler, not here
