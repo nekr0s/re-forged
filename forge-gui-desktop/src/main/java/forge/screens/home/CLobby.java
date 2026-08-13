@@ -79,6 +79,13 @@ public class CLobby implements IDraftEventHandler {
     private int lastPackNumber;
     private CEditorNetworkDraft networkDraftEditor;
 
+    // Tournament state
+    private boolean inTournament;
+    private int tournamentCurrentRound;
+    private int tournamentTotalRounds;
+    private java.util.List<forge.gamemodes.net.PairingView> currentPairings;
+    private java.util.List<forge.gamemodes.net.StandingView> currentStandings;
+
     public CLobby(final VLobby view) {
         this.view = view;
         view.setController(this);
@@ -207,6 +214,14 @@ public class CLobby implements IDraftEventHandler {
         }
         if (eventPanelNeedsUpdate) {
             refreshEventPanel();
+        }
+
+        if (newView != null && newView.isTournamentActive()) {
+            tournamentCurrentRound = newView.getCurrentRound();
+            tournamentTotalRounds = newView.getTotalRounds();
+            currentPairings = newView.getPairings();
+            currentStandings = newView.getStandings();
+            inTournament = true;
         }
     }
 
@@ -546,6 +561,67 @@ public class CLobby implements IDraftEventHandler {
             view.updateRightPanelForMode();
             view.updateEventPanelState();
             view.updateActionButtons();
+        });
+    }
+
+    public boolean isInTournament() { return inTournament; }
+    public int getTournamentCurrentRound() { return tournamentCurrentRound; }
+    public int getTournamentTotalRounds() { return tournamentTotalRounds; }
+    public java.util.List<forge.gamemodes.net.PairingView> getCurrentPairings() { return currentPairings; }
+    public java.util.List<forge.gamemodes.net.StandingView> getCurrentStandings() { return currentStandings; }
+
+    void requestSpectate(String matchId) {
+        FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
+        if (client != null) {
+            client.send(new forge.gamemodes.net.event.SpectateRequestEvent(matchId));
+        }
+    }
+
+    @Override
+    public void onTournamentStart(forge.gamemodes.net.event.TournamentStartEvent event) {
+        SwingUtilities.invokeLater(() -> {
+            inTournament = true;
+            view.updateActionButtons();
+            view.updateRightPanelForMode();
+        });
+    }
+
+    @Override
+    public void onMatchStarted(forge.gamemodes.net.event.MatchStartedEvent event) {
+        SwingUtilities.invokeLater(() -> {
+            view.updateRightPanelForMode();
+        });
+    }
+
+    @Override
+    public void onMatchComplete(forge.gamemodes.net.event.MatchCompleteEvent event) {
+        SwingUtilities.invokeLater(() -> {
+            view.updateRightPanelForMode();
+        });
+    }
+
+    @Override
+    public void onRoundComplete(forge.gamemodes.net.event.RoundCompleteEvent event) {
+        SwingUtilities.invokeLater(() -> {
+            view.updateRightPanelForMode();
+        });
+    }
+
+    @Override
+    public void onTournamentComplete(forge.gamemodes.net.event.TournamentCompleteEvent event) {
+        SwingUtilities.invokeLater(() -> {
+            inTournament = false;
+            currentStandings = event.getFinalStandings();
+            view.showTournamentResults(event.getFinalStandings(), event.isCancelled());
+            view.updateActionButtons();
+            view.updateRightPanelForMode();
+        });
+    }
+
+    @Override
+    public void onSpectateApproved(forge.gamemodes.net.event.SpectateApprovedEvent event) {
+        SwingUtilities.invokeLater(() -> {
+            view.showSpectateView(event.getMatchId());
         });
     }
 
