@@ -35,9 +35,11 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
 
     private BoosterDraftHost draftHost;
     private NetworkEvent currentEvent;
+    private ServerTournamentController tournamentController;
 
     public NetworkEvent getCurrentEvent() { return currentEvent; }
     public void setCurrentEvent(NetworkEvent event) { this.currentEvent = event; }
+    public ServerTournamentController getTournamentController() { return tournamentController; }
 
     @Override
     protected void updateView(boolean fullUpdate) {
@@ -219,6 +221,10 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
      */
     public synchronized void clearCurrentEvent() {
         if (getCurrentEvent() == null) return;
+        if (tournamentController != null) {
+            tournamentController.shutdown();
+            tournamentController = null;
+        }
         netLog.info("Event cleared by host");
         if (draftHost != null) {
             draftHost.shutdown();
@@ -360,6 +366,43 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         // Broadcast the now-populated event so clients see the phase change.
         updateView(true);
         generateAndDistributeSealedPools();
+    }
+
+    /**
+     * Start a tournament for the current event.
+     * Requires that all participants have built decks and are ready.
+     *
+     * @param gamesPerMatch 1, 3, or 5
+     */
+    public synchronized void startTournament(int gamesPerMatch) {
+        NetworkEvent event = getCurrentEvent();
+        if (event == null) return;
+
+        for (EventParticipant p : event.getParticipants()) {
+            if (p.isAI()) continue;
+            LobbySlot slot = getSlot(p.getLobbySlotIndex());
+            if (slot != null && !slot.isReady()) {
+                netLog.warn("Cannot start tournament: {} is not ready", p.getName());
+                return;
+            }
+            if (slot != null && slot.getDeck() == null) {
+                netLog.warn("Cannot start tournament: {} has no deck", p.getName());
+                return;
+            }
+        }
+
+        event.setGamesPerMatch(gamesPerMatch);
+        tournamentController = new ServerTournamentController(this, event);
+        tournamentController.startTournament();
+        netLog.info("Tournament started — gamesPerMatch={}", gamesPerMatch);
+    }
+
+    /**
+     * Called when a player toggles ready during tournament between-round standby.
+     */
+    public void onPlayerReadyTournament(int slotIndex) {
+        // Tournament controller uses polling, so ready-check is handled there
+        // This method is a hook for future use when standby phase is implemented
     }
 
     /**
