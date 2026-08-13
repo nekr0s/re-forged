@@ -59,6 +59,7 @@ public class RemoteClientGuiGame extends NetworkGuiGame implements IHasForgeLog 
     public static boolean useDeltaSync = true;
 
     private final RemoteClient client;
+    private final String matchId;
     private final GameProtocolSender sender;
     private final DeltaSyncManager syncManager;
 
@@ -72,11 +73,24 @@ public class RemoteClientGuiGame extends NetworkGuiGame implements IHasForgeLog 
     private GameEventForwarder forwarder;
     private boolean flushing;
 
-    public RemoteClientGuiGame(final RemoteClient client) {
+    public RemoteClientGuiGame(final RemoteClient client, final String matchId) {
         this.client = client;
-        sender = new GameProtocolSender(client);
+        this.matchId = matchId;
+        sender = new GameProtocolSender(client, matchId);
         syncManager = new DeltaSyncManager();
-        client.setGui(this);
+        if (matchId != null) {
+            client.setMatchGui(matchId, this);
+        } else {
+            client.setGui(this);
+        }
+    }
+
+    public RemoteClientGuiGame(final RemoteClient client) {
+        this(client, null);
+    }
+
+    public String getMatchId() {
+        return matchId;
     }
 
     public RemoteClient getClient() {
@@ -299,7 +313,11 @@ public class RemoteClientGuiGame extends NetworkGuiGame implements IHasForgeLog 
         // setGameView is called before openView, and the client can't respond
         // until after openView — so the encoder/decoder are ready in time.
         if (!codecTrackerSet && gameView != null && gameView.getTracker() != null) {
-            client.setCodecTracker(gameView.getTracker(), syncManager.getConsumerId());
+            if (matchId != null) {
+                client.setCodecTracker(matchId, gameView.getTracker(), syncManager.getConsumerId());
+            } else {
+                client.setCodecTracker(gameView.getTracker(), syncManager.getConsumerId());
+            }
             codecTrackerSet = true;
         }
         updateGameView();

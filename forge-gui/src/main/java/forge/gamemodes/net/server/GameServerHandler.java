@@ -38,6 +38,18 @@ final class GameServerHandler extends GameProtocolHandler<IGameController> imple
     }
 
     @Override
+    protected IGameController getToInvoke(final ChannelHandlerContext ctx, final String matchId) {
+        final RemoteClient client = getClient(ctx);
+        if (client == null) {
+            return null;
+        }
+        if (matchId != null) {
+            return server.getController(client.getIndex(), matchId);
+        }
+        return server.getController(client.getIndex());
+    }
+
+    @Override
     protected void beforeCall(final ChannelHandlerContext ctx, final ProtocolMethod protocolMethod, final Object[] args) {
         if (protocolMethod == ProtocolMethod.requestResync) {
             RemoteClient client = getClient(ctx);

@@ -214,11 +214,10 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         matchReplies.remove(matchId);
         matchCodecTrackers.remove(matchId);
         matchCodecConsumerIds.remove(matchId);
-        // TODO: Task 7 will add encoder.removeTracker(matchId)
-        // CompatibleObjectEncoder encoder = channel.pipeline().get(CompatibleObjectEncoder.class);
-        // if (encoder != null) {
-        //     encoder.removeTracker(matchId);
-        // }
+        CompatibleObjectEncoder encoder = channel.pipeline().get(CompatibleObjectEncoder.class);
+        if (encoder != null) {
+            encoder.removeTracker(matchId);
+        }
         if (activeMatchId != null && activeMatchId.equals(matchId)) {
             activeMatchId = matchGuis.isEmpty() ? null : matchGuis.keySet().iterator().next();
         }
@@ -265,11 +264,10 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         }
         matchCodecTrackers.put(matchId, tracker);
         matchCodecConsumerIds.put(matchId, consumerId);
-        // TODO: Task 7 will add encoder.setTracker(matchId, tracker, consumerId)
-        // CompatibleObjectEncoder encoder = channel.pipeline().get(CompatibleObjectEncoder.class);
-        // if (encoder != null) {
-        //     encoder.setTracker(matchId, tracker, consumerId);
-        // }
+        CompatibleObjectEncoder encoder = channel.pipeline().get(CompatibleObjectEncoder.class);
+        if (encoder != null) {
+            encoder.setTracker(matchId, tracker, consumerId);
+        }
     }
 
     private void applyCodecTracker(Channel ch) {
