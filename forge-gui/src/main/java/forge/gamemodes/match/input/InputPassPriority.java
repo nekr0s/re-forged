@@ -32,6 +32,7 @@ import forge.gamemodes.match.YieldController;
 import forge.gamemodes.match.YieldUpdate;
 import forge.gamemodes.net.server.FServerManager;
 import forge.gamemodes.net.server.FServerManager.AfkTimeout;
+import forge.gamemodes.net.server.RemoteClientGuiGame;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.util.collect.FCollectionView;
 import forge.model.FModel;
@@ -73,8 +74,11 @@ public class InputPassPriority extends InputSyncronizedBase {
     @Override
     public void showAndWait() {
         final FServerManager server = FServerManager.getInstance();
+        final String matchId = getController().getGui() instanceof RemoteClientGuiGame rcg
+                ? rcg.getMatchId()
+                : null;
         final AfkTimeout timeout = server != null
-                ? server.armAfkTimeout(getController(), this)
+                ? server.armAfkTimeout(getController(), this, matchId)
                 : AfkTimeout.NOOP;
         try {
             super.showAndWait();
