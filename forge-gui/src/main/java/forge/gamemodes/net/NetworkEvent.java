@@ -41,6 +41,8 @@ public final class NetworkEvent {
     private int numRounds = 3;
     private SealedCardPoolGenerator sealedGenerator;
     private BoosterDraft draft;
+    private forge.gamemodes.tournament.system.TournamentRoundRobin tournament;
+    private int gamesPerMatch = 3;
 
     public NetworkEvent(EventFormat format) {
         this.eventId = UUID.randomUUID().toString().substring(0, 8);
@@ -73,6 +75,12 @@ public final class NetworkEvent {
     public void setDraft(BoosterDraft draft) { this.draft = draft; }
     public int getNumRounds() { return numRounds; }
     public void setNumRounds(int numRounds) { this.numRounds = numRounds; }
+
+    public forge.gamemodes.tournament.system.TournamentRoundRobin getTournament() { return tournament; }
+    public void setTournament(forge.gamemodes.tournament.system.TournamentRoundRobin tournament) { this.tournament = tournament; }
+    public int getGamesPerMatch() { return gamesPerMatch; }
+    public void setGamesPerMatch(int gamesPerMatch) { this.gamesPerMatch = gamesPerMatch; }
+    public boolean isTournamentMode() { return tournament != null; }
 
     public void addParticipant(EventParticipant participant) {
         participants.add(participant);
