@@ -402,6 +402,10 @@ public final class FServerManager implements IHasForgeLog {
                 return t;
             });
 
+    ScheduledExecutorService getAfkExecutor() {
+        return afkExecutor;
+    }
+
     private static final long AFK_REPEAT_TIMEOUT_MS = 10_000L;
     private static final long AFK_WARNING_LEAD_MS = 30_000L;
     private static final int HOST_SLOT = -1;

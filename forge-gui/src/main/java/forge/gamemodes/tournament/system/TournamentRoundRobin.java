@@ -5,7 +5,7 @@ import java.util.List;
 
 import com.google.common.collect.Lists;
 
-import forge.player.GamePlayerUtil;
+import forge.ai.LobbyPlayerAi;
 
 @SuppressWarnings("serial")
 public class TournamentRoundRobin extends AbstractTournament {
@@ -33,7 +33,7 @@ public class TournamentRoundRobin extends AbstractTournament {
 
         List<TournamentPlayer> roundPairings = Lists.newArrayList(this.remainingPlayers);
         if (numPlayers % 2 == 1) {
-            roundPairings.add(new TournamentPlayer(GamePlayerUtil.createAiPlayer("BYE", 0)));
+            roundPairings.add(new TournamentPlayer(new LobbyPlayerAi("BYE", null)));
             numPlayers++;
         }
 
