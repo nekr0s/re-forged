@@ -110,4 +110,97 @@ public class TournamentLogicTest {
         Assert.assertTrue(byes >= 1, "Round with 3 players should have at least 1 bye");
         Assert.assertEquals(real + byes, 2, "Should have 2 total pairings");
     }
+
+    @Test
+    public void testStandingsSortByScoreThenOMW() {
+        // 4 players: Alice 3-0, Bob 2-1, Charlie 1-2, Diana 0-3
+        TournamentPlayer tpAlice = new TournamentPlayer(new LobbyPlayerAi("Alice", null), 0);
+        TournamentPlayer tpBob = new TournamentPlayer(new LobbyPlayerAi("Bob", null), 1);
+        TournamentPlayer tpCharlie = new TournamentPlayer(new LobbyPlayerAi("Charlie", null), 2);
+        TournamentPlayer tpDiana = new TournamentPlayer(new LobbyPlayerAi("Diana", null), 3);
+
+        List<TournamentPlayer> all = Arrays.asList(tpAlice, tpBob, tpCharlie, tpDiana);
+
+        // Alice: beat Bob, Charlie, Diana
+        tpAlice.addWin(); tpAlice.addOpponentIndex(1);
+        tpAlice.addWin(); tpAlice.addOpponentIndex(2);
+        tpAlice.addWin(); tpAlice.addOpponentIndex(3);
+
+        // Bob: lost to Alice, beat Charlie, beat Diana
+        tpBob.addLoss(); tpBob.addOpponentIndex(0);
+        tpBob.addWin();  tpBob.addOpponentIndex(2);
+        tpBob.addWin();  tpBob.addOpponentIndex(3);
+
+        // Charlie: lost to Alice, lost to Bob, beat Diana
+        tpCharlie.addLoss(); tpCharlie.addOpponentIndex(0);
+        tpCharlie.addLoss(); tpCharlie.addOpponentIndex(1);
+        tpCharlie.addWin();  tpCharlie.addOpponentIndex(3);
+
+        // Diana: lost to all
+        tpDiana.addLoss(); tpDiana.addOpponentIndex(0);
+        tpDiana.addLoss(); tpDiana.addOpponentIndex(1);
+        tpDiana.addLoss(); tpDiana.addOpponentIndex(2);
+
+        // Sort by score desc, then OMW desc
+        List<TournamentPlayer> sorted = new ArrayList<>(all);
+        sorted.sort((a, b) -> {
+            int scoreCmp = Integer.compare(b.getScore(), a.getScore());
+            if (scoreCmp != 0) return scoreCmp;
+            return Double.compare(b.getOMW(all), a.getOMW(all));
+        });
+
+        Assert.assertEquals(sorted.get(0).getPlayer().getName(), "Alice");
+        Assert.assertEquals(sorted.get(1).getPlayer().getName(), "Bob");
+        Assert.assertEquals(sorted.get(2).getPlayer().getName(), "Charlie");
+        Assert.assertEquals(sorted.get(3).getPlayer().getName(), "Diana");
+    }
+
+    @Test
+    public void testTieScenario() {
+        // 6 players, 3 rounds — A and B both 2-1 but A has better OMW
+        TournamentPlayer tpA = new TournamentPlayer(new LobbyPlayerAi("A", null), 0);
+        TournamentPlayer tpB = new TournamentPlayer(new LobbyPlayerAi("B", null), 1);
+        TournamentPlayer tpC = new TournamentPlayer(new LobbyPlayerAi("C", null), 2);
+        TournamentPlayer tpD = new TournamentPlayer(new LobbyPlayerAi("D", null), 3);
+        TournamentPlayer tpE = new TournamentPlayer(new LobbyPlayerAi("E", null), 4);
+        TournamentPlayer tpF = new TournamentPlayer(new LobbyPlayerAi("F", null), 5);
+
+        List<TournamentPlayer> all = Arrays.asList(tpA, tpB, tpC, tpD, tpE, tpF);
+
+        // Round 1: A>C, B>D, E>F
+        tpA.addWin();  tpA.addOpponentIndex(2);  tpC.addLoss(); tpC.addOpponentIndex(0);
+        tpB.addWin();  tpB.addOpponentIndex(3);  tpD.addLoss(); tpD.addOpponentIndex(1);
+        tpE.addWin();  tpE.addOpponentIndex(5);  tpF.addLoss(); tpF.addOpponentIndex(4);
+
+        // Round 2: A>D, E>B, C>F
+        tpA.addWin();  tpA.addOpponentIndex(3);  tpD.addLoss(); tpD.addOpponentIndex(0);
+        tpE.addWin();  tpE.addOpponentIndex(1);  tpB.addLoss(); tpB.addOpponentIndex(4);
+        tpC.addWin();  tpC.addOpponentIndex(5);  tpF.addLoss(); tpF.addOpponentIndex(2);
+
+        // Round 3: E>A, B>F, C>D
+        tpE.addWin();  tpE.addOpponentIndex(0);  tpA.addLoss(); tpA.addOpponentIndex(4);
+        tpB.addWin();  tpB.addOpponentIndex(5);  tpF.addLoss(); tpF.addOpponentIndex(1);
+        tpC.addWin();  tpC.addOpponentIndex(3);  tpD.addLoss(); tpD.addOpponentIndex(2);
+
+        // Records: A 2-1, B 2-1, C 2-1, D 0-3, E 3-0, F 0-3
+        // A's OMW: C(2/3=0.667), D(0/3=0), E(3/3=1.0) = 0.556
+        // B's OMW: D(0/3=0), E(3/3=1.0), F(0/3=0) = 0.333
+        // A should rank higher than B due to better OMW
+
+        double omwA = tpA.getOMW(all);
+        double omwB = tpB.getOMW(all);
+        Assert.assertTrue(omwA > omwB,
+            "A should have better OMW than B. A=" + omwA + " B=" + omwB);
+
+        List<TournamentPlayer> sorted = new ArrayList<>(all);
+        sorted.sort((a, b) -> {
+            int scoreCmp = Integer.compare(b.getScore(), a.getScore());
+            if (scoreCmp != 0) return scoreCmp;
+            return Double.compare(b.getOMW(all), a.getOMW(all));
+        });
+
+        Assert.assertEquals(sorted.get(0).getPlayer().getName(), "E", "E should be 1st (3-0)");
+        Assert.assertEquals(sorted.get(1).getPlayer().getName(), "A", "A should be 2nd (2-1, best OMW)");
+        Assert.assertEquals(sorted.get(2).getPlayer().getName(), "B", "B should be 3rd (2-1, 2nd OMW)");
+    }
 }
