@@ -576,6 +576,10 @@ public abstract class GameLobby implements IHasGameType {
     }
 
     public Runnable startMatch(final List<Integer> slotIndices, final GameType gameType, final Set<GameType> appliedVariants) {
+        return startMatch(slotIndices, gameType, appliedVariants, true);
+    }
+
+    public Runnable startMatch(final List<Integer> slotIndices, final GameType gameType, final Set<GameType> appliedVariants, final boolean autoSpectate) {
         final List<LobbySlot> activeSlots = Lists.newArrayListWithCapacity(slotIndices.size());
         for (final int idx : slotIndices) {
             final LobbySlot slot = data.slots.get(idx);
@@ -630,6 +634,7 @@ public abstract class GameLobby implements IHasGameType {
             final HostedMatch hostedMatch = GuiBase.getInterface().hostMatch();
             activeMatches.register(hostedMatch);
             hostedMatch.setOnMatchOver(() -> onMatchOver(hostedMatch.getMatchId()));
+            hostedMatch.setAutoSpectate(autoSpectate);
             hostedMatch.startMatch(gameType, appliedVariants, players, guis);
 
             for (final Player p : hostedMatch.getGame().getPlayers()) {

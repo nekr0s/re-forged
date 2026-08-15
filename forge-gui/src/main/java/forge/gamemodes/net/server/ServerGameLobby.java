@@ -6,6 +6,7 @@ import forge.deck.DeckSection;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
 import forge.gamemodes.limited.SealedCardPoolGenerator;
+import forge.gamemodes.limited.SealedDeckBuilder;
 import forge.gamemodes.match.GameLobby;
 import forge.gamemodes.match.HostedMatch;
 import forge.gamemodes.match.LobbySlot;
@@ -430,23 +431,32 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         FServerManager server = FServerManager.getInstance();
 
         for (EventParticipant participant : event.getParticipants()) {
-            if (participant.isAI()) {
-                continue;
+            if (participant.isHuman()) {
+                CardPool pool = gen.getCardPool(false);
+                if (pool == null) {
+                    netLog.warn("Failed to generate pool for {}", participant.getName());
+                    continue;
+                }
+
+                Deck deck = new Deck(NetworkEvent.poolNameFor(event));
+                deck.getOrCreate(DeckSection.Sideboard).addAll(pool);
+                NetworkEvent.setEventTags(deck, event);
+
+                server.sendToSlot(participant.getLobbySlotIndex(),
+                        new ReceiveEventPoolEvent(eventId, deck));
+                netLog.info("Sent sealed pool to {} ({} cards)", participant.getName(), pool.countAll());
+            } else {
+                CardPool pool = gen.getCardPool(false);
+                if (pool == null) {
+                    netLog.warn("Failed to generate pool for {}", participant.getName());
+                    continue;
+                }
+
+                Deck deck = new SealedDeckBuilder(pool.toFlatList()).buildDeck(gen.getLandSetCode());
+                NetworkEvent.setEventTags(deck, event);
+                participant.setDeck(deck);
+                netLog.info("Built sealed deck for AI {} ({} cards)", participant.getName(), deck.getMain().countAll());
             }
-
-            CardPool pool = gen.getCardPool(false);
-            if (pool == null) {
-                netLog.warn("Failed to generate pool for {}", participant.getName());
-                continue;
-            }
-
-            Deck deck = new Deck(NetworkEvent.poolNameFor(event));
-            deck.getOrCreate(DeckSection.Sideboard).addAll(pool);
-            NetworkEvent.setEventTags(deck, event);
-
-            server.sendToSlot(participant.getLobbySlotIndex(),
-                    new ReceiveEventPoolEvent(eventId, deck));
-            netLog.info("Sent sealed pool to {} ({} cards)", participant.getName(), pool.countAll());
         }
     }
 

@@ -58,6 +58,7 @@ public class HostedMatch {
     private Runnable startGameHook = null;
     private Runnable endGameHook = null;
     private Runnable onMatchOver = null;
+    private boolean autoSpectate = true;
     private final List<PlayerControllerHuman> humanControllers = Lists.newArrayList();
     private Map<RegisteredPlayer, IGuiGame> guis;
     private int humanCount;
@@ -78,6 +79,7 @@ public class HostedMatch {
     }
     public void setEndGameHook(Runnable hook) { endGameHook = hook; }
     public void setOnMatchOver(Runnable callback) { onMatchOver = callback; }
+    public void setAutoSpectate(boolean value) { this.autoSpectate = value; }
 
     private static GameRules getDefaultRules(final GameType gameType) {
         final GameRules gameRules = new GameRules(gameType);
@@ -267,7 +269,7 @@ public class HostedMatch {
             e.getKey().openView(new TrackableCollection<>(e.getValue()));
         }
 
-        if (humanCount == 0) { //watch game but do not participate
+        if (humanCount == 0 && autoSpectate) { //watch game but do not participate
             final IGuiGame gui = GuiBase.getInterface().getNewGuiGame();
             gui.setGameView(null); //clear the view so when the game restarts again, it updates correctly
             gui.setGameView(gameView);

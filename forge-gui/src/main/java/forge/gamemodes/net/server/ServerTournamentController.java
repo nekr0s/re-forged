@@ -98,10 +98,15 @@ public class ServerTournamentController {
     private void startMatchForPairing(TournamentPairing pairing) {
         List<TournamentPlayer> pairedPlayers = pairing.getPairedPlayers();
         List<Integer> slotIndices = new ArrayList<>();
+        boolean hasHuman = false;
 
         for (TournamentPlayer tp : pairedPlayers) {
             EventParticipant ep = findParticipant(tp);
             if (ep == null || ep.getLobbySlotIndex() < 0) continue;
+
+            if (ep.isHuman()) {
+                hasHuman = true;
+            }
 
             LobbySlot slot = lobby.getSlot(ep.getLobbySlotIndex());
             if (slot == null) continue;
@@ -122,7 +127,7 @@ public class ServerTournamentController {
                 ? GameType.Sealed
                 : GameType.Constructed;
 
-        Runnable starter = lobby.startMatch(slotIndices, gameType, EnumSet.noneOf(GameType.class));
+        Runnable starter = lobby.startMatch(slotIndices, gameType, EnumSet.noneOf(GameType.class), hasHuman);
         if (starter == null) {
             return;
         }
