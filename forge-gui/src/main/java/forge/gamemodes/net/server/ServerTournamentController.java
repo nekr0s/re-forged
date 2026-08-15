@@ -70,6 +70,7 @@ public class ServerTournamentController implements IHasForgeLog {
 
     public synchronized void startTournament() {
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
+        event.setRoundState(forge.gamemodes.net.RoundState.ACTIVE);
         netLog.info("[Tournament] Tournament started — round 1 of {}", tournament.getTotalRounds());
         lobby.broadcastTournamentEvent(
             new forge.gamemodes.net.event.TournamentStartEvent(event.getEventId()));
@@ -299,6 +300,7 @@ public class ServerTournamentController implements IHasForgeLog {
 
     private void onTournamentComplete() {
         event.setPhase(EventPhase.TOURNAMENT_COMPLETE);
+        event.setRoundState(forge.gamemodes.net.RoundState.COMPLETE);
 
         List<TournamentPlayer> ranked = new ArrayList<>(tournament.getAllPlayers());
         ranked.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
@@ -367,7 +369,7 @@ public class ServerTournamentController implements IHasForgeLog {
 
     private void enterBetweenRoundStandby() {
         inStandby = true;
-        event.setPhase(EventPhase.ROUND_IN_PROGRESS);
+        event.setRoundState(forge.gamemodes.net.RoundState.COMPLETE);
 
         for (EventParticipant ep : event.getParticipants()) {
             if (ep.isHuman()) {
@@ -392,9 +394,10 @@ public class ServerTournamentController implements IHasForgeLog {
             return;
         }
 
+        int completedRound = tournament.getActiveRound() - 1;
         netLog.info("[Tournament] Entering between-round standby — waiting for host to start the next round");
         server.broadcast(new MessageEvent(
-                "Round " + tournament.getActiveRound() + " complete. All players, click Ready. The host will start the next round."));
+                "Round " + completedRound + " complete. All players, click Ready. The host will start the next round."));
         server.updateLobbyState();
     }
 
@@ -430,6 +433,7 @@ public class ServerTournamentController implements IHasForgeLog {
         netLog.info("[Tournament] Host starting next round (round {})", tournament.getActiveRound());
         inStandby = false;
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
+        event.setRoundState(forge.gamemodes.net.RoundState.ACTIVE);
         startRoundMatches();
         server.updateLobbyState();
     }
@@ -437,6 +441,7 @@ public class ServerTournamentController implements IHasForgeLog {
     private void proceedToNextRound() {
         inStandby = false;
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
+        event.setRoundState(forge.gamemodes.net.RoundState.ACTIVE);
         startRoundMatches();
         server.updateLobbyState();
     }

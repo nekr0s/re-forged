@@ -25,6 +25,7 @@ public final class NetworkEventView implements Serializable {
     private final java.util.List<StandingView> standings;
     private final int gamesPerMatch;
     private final java.util.Map<Integer, String> activeMatchIds;
+    private final RoundState roundState;
 
     // Backward-compat constructor (no tournament state)
     public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
@@ -32,7 +33,7 @@ public final class NetworkEventView implements Serializable {
             String productDescription, int numRounds) {
         this(eventId, format, phase, participants, pickTimerSeconds, productDescription, numRounds,
                 0, 0, java.util.Collections.emptyList(), java.util.Collections.emptyList(),
-                3, java.util.Collections.emptyMap());
+                3, java.util.Collections.emptyMap(), RoundState.NONE);
     }
 
     // Full constructor with tournament state
@@ -42,6 +43,18 @@ public final class NetworkEventView implements Serializable {
             int currentRound, int totalRounds,
             List<PairingView> pairings, List<StandingView> standings,
             int gamesPerMatch, Map<Integer, String> activeMatchIds) {
+        this(eventId, format, phase, participants, pickTimerSeconds, productDescription, numRounds,
+                currentRound, totalRounds, pairings, standings,
+                gamesPerMatch, activeMatchIds, RoundState.NONE);
+    }
+
+    // Full constructor with tournament state and round state
+    public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
+            List<EventParticipant> participants, int pickTimerSeconds,
+            String productDescription, int numRounds,
+            int currentRound, int totalRounds,
+            List<PairingView> pairings, List<StandingView> standings,
+            int gamesPerMatch, Map<Integer, String> activeMatchIds, RoundState roundState) {
         this.eventId = eventId;
         this.format = format;
         this.phase = phase;
@@ -55,6 +68,7 @@ public final class NetworkEventView implements Serializable {
         this.standings = List.copyOf(standings);
         this.gamesPerMatch = gamesPerMatch;
         this.activeMatchIds = Map.copyOf(activeMatchIds);
+        this.roundState = roundState;
     }
 
     public String getEventId() { return eventId; }
@@ -70,6 +84,7 @@ public final class NetworkEventView implements Serializable {
     public List<StandingView> getStandings() { return standings; }
     public int getGamesPerMatch() { return gamesPerMatch; }
     public Map<Integer, String> getActiveMatchIds() { return activeMatchIds; }
+    public RoundState getRoundState() { return roundState; }
 
     public boolean isTournamentActive() {
         return totalRounds > 0 && !standings.isEmpty();

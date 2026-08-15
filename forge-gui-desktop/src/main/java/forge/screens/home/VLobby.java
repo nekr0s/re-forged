@@ -934,8 +934,15 @@ public class VLobby implements ILobbyView {
 
         int round = controller.getTournamentCurrentRound();
         int total = controller.getTournamentTotalRounds();
+        forge.gamemodes.net.RoundState roundState = controller.getCurrentRoundState();
         lblTournamentTitle.setText("Tournament");
-        lblTournamentRound.setText("Round " + round + " of " + total);
+        if (roundState == forge.gamemodes.net.RoundState.ACTIVE) {
+            lblTournamentRound.setText("Round " + round + " of " + total + " in progress");
+        } else if (roundState == forge.gamemodes.net.RoundState.COMPLETE) {
+            lblTournamentRound.setText("Round " + round + " complete — waiting for host to start round " + (round + 1));
+        } else {
+            lblTournamentRound.setText("Round " + round + " of " + total);
+        }
 
         StringBuilder standingsText = new StringBuilder("<html>");
         var standings = controller.getCurrentStandings();
@@ -953,7 +960,7 @@ public class VLobby implements ILobbyView {
         StringBuilder pairingsText = new StringBuilder("<html>");
         var pairings = controller.getCurrentPairings();
         if (pairings != null && !pairings.isEmpty()) {
-            pairingsText.append("<b>Current Round:</b><br>");
+            pairingsText.append("<b>").append(roundState == forge.gamemodes.net.RoundState.COMPLETE ? "Last Round:" : "Current Round:").append("</b><br>");
             for (var p : pairings) {
                 String status = switch (p.status()) {
                     case ONGOING -> " [Spectate]";

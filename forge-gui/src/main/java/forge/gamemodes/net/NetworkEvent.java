@@ -43,6 +43,7 @@ public final class NetworkEvent {
     private BoosterDraft draft;
     private forge.gamemodes.tournament.system.TournamentRoundRobin tournament;
     private int gamesPerMatch = 3;
+    private RoundState roundState = RoundState.NONE;
 
     public NetworkEvent(EventFormat format) {
         this.eventId = UUID.randomUUID().toString().substring(0, 8);
@@ -80,6 +81,8 @@ public final class NetworkEvent {
     public void setTournament(forge.gamemodes.tournament.system.TournamentRoundRobin tournament) { this.tournament = tournament; }
     public int getGamesPerMatch() { return gamesPerMatch; }
     public void setGamesPerMatch(int gamesPerMatch) { this.gamesPerMatch = gamesPerMatch; }
+    public RoundState getRoundState() { return roundState; }
+    public void setRoundState(RoundState roundState) { this.roundState = roundState; }
     public boolean isTournamentMode() { return tournament != null; }
 
     public void addParticipant(EventParticipant participant) {
@@ -127,7 +130,10 @@ public final class NetworkEvent {
         java.util.Map<Integer, String> activeMatchIds = java.util.Collections.emptyMap();
 
         if (tournament != null) {
-            currentRound = tournament.getActiveRound();
+            int active = tournament.getActiveRound();
+            // The engine advances activeRound when a round's last match completes (not when
+            // the next round starts), so during COMPLETE the displayed round is activeRound - 1.
+            currentRound = (roundState == RoundState.COMPLETE) ? active - 1 : active;
             totalRounds = tournament.getTotalRounds();
             pairings = buildPairingViews();
             standings = buildStandingViews();
@@ -136,7 +142,7 @@ public final class NetworkEvent {
         return new NetworkEventView(eventId, format, phase,
                 participants, pickTimerSeconds, productDescription, numRounds,
                 currentRound, totalRounds, pairings, standings,
-                gamesPerMatch, activeMatchIds);
+                gamesPerMatch, activeMatchIds, roundState);
     }
 
     private java.util.List<PairingView> buildPairingViews() {

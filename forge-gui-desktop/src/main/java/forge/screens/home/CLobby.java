@@ -85,6 +85,7 @@ public class CLobby implements IDraftEventHandler {
     private int tournamentTotalRounds;
     private java.util.List<forge.gamemodes.net.PairingView> currentPairings;
     private java.util.List<forge.gamemodes.net.StandingView> currentStandings;
+    private forge.gamemodes.net.RoundState currentRoundState = forge.gamemodes.net.RoundState.NONE;
 
     public CLobby(final VLobby view) {
         this.view = view;
@@ -221,6 +222,7 @@ public class CLobby implements IDraftEventHandler {
             tournamentTotalRounds = newView.getTotalRounds();
             currentPairings = newView.getPairings();
             currentStandings = newView.getStandings();
+            currentRoundState = newView.getRoundState();
             inTournament = true;
         }
 
@@ -573,6 +575,7 @@ public class CLobby implements IDraftEventHandler {
     public int getTournamentTotalRounds() { return tournamentTotalRounds; }
     public java.util.List<forge.gamemodes.net.PairingView> getCurrentPairings() { return currentPairings; }
     public java.util.List<forge.gamemodes.net.StandingView> getCurrentStandings() { return currentStandings; }
+    public forge.gamemodes.net.RoundState getCurrentRoundState() { return currentRoundState; }
 
     void requestSpectate(String matchId) {
         FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
