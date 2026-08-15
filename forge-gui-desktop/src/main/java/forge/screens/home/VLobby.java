@@ -934,11 +934,11 @@ public class VLobby implements ILobbyView {
 
         int round = controller.getTournamentCurrentRound();
         int total = controller.getTournamentTotalRounds();
-        forge.gamemodes.net.RoundState roundState = controller.getCurrentRoundState();
+        RoundState roundState = controller.getCurrentRoundState();
         lblTournamentTitle.setText("Tournament");
-        if (roundState == forge.gamemodes.net.RoundState.ACTIVE) {
+        if (roundState == RoundState.ACTIVE) {
             lblTournamentRound.setText("Round " + round + " of " + total + " in progress");
-        } else if (roundState == forge.gamemodes.net.RoundState.COMPLETE) {
+        } else if (roundState == RoundState.COMPLETE) {
             lblTournamentRound.setText("Round " + round + " complete — waiting for host to start round " + (round + 1));
         } else {
             lblTournamentRound.setText("Round " + round + " of " + total);

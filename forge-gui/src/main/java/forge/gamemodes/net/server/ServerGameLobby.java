@@ -17,6 +17,7 @@ import forge.gamemodes.net.EventParticipant;
 import forge.gamemodes.net.EventPhase;
 import forge.gamemodes.net.NetworkEvent;
 import forge.gamemodes.net.event.DraftPickEvent;
+import forge.gamemodes.net.event.NetEvent;
 import forge.gamemodes.net.event.ReceiveEventPoolEvent;
 import forge.gui.interfaces.IGuiGame;
 import forge.util.IHasForgeLog;
@@ -537,7 +538,7 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         return draftHost;
     }
 
-    void broadcastTournamentEvent(forge.gamemodes.net.event.NetEvent event) {
+    void broadcastTournamentEvent(NetEvent event) {
         FServerManager.getInstance().broadcast(event);
     }
 }

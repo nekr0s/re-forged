@@ -15,11 +15,8 @@ import forge.game.GameType;
 import forge.game.player.RegisteredPlayer;
 import forge.gamemodes.match.HostedMatch;
 import forge.gamemodes.match.LobbySlot;
-import forge.gamemodes.net.EventFormat;
-import forge.gamemodes.net.EventParticipant;
-import forge.gamemodes.net.EventPhase;
-import forge.gamemodes.net.NetworkEvent;
-import forge.gamemodes.net.event.MessageEvent;
+import forge.gamemodes.net.*;
+import forge.gamemodes.net.event.*;
 import forge.gamemodes.tournament.system.TournamentPairing;
 import forge.gamemodes.tournament.system.TournamentPlayer;
 import forge.gamemodes.tournament.system.TournamentRoundRobin;
@@ -72,8 +69,7 @@ public class ServerTournamentController implements IHasForgeLog {
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
         event.setRoundState(forge.gamemodes.net.RoundState.ACTIVE);
         netLog.info("[Tournament] Tournament started — round 1 of {}", tournament.getTotalRounds());
-        lobby.broadcastTournamentEvent(
-            new forge.gamemodes.net.event.TournamentStartEvent(event.getEventId()));
+        lobby.broadcastTournamentEvent(new TournamentStartEvent(event.getEventId()));
         startRoundMatches();
         server.updateLobbyState();
     }
@@ -159,7 +155,7 @@ public class ServerTournamentController implements IHasForgeLog {
             netLog.info("[Tournament] Match started — matchId={}, round={}", matchId, tournament.getActiveRound());
 
             lobby.broadcastTournamentEvent(
-                new forge.gamemodes.net.event.MatchStartedEvent(
+                new MatchStartedEvent(
                     matchId,
                     pairedPlayers.get(0).getPlayer().getName(),
                     pairedPlayers.get(1).getPlayer().getName(),
@@ -241,8 +237,7 @@ public class ServerTournamentController implements IHasForgeLog {
                     String winnerName = pairing.getWinner() != null
                         ? pairing.getWinner().getPlayer().getName() : null;
                     netLog.info("[Tournament] Match complete — matchId={}, winner={}", matchId, winnerName);
-                    lobby.broadcastTournamentEvent(
-                        new forge.gamemodes.net.event.MatchCompleteEvent(matchId, winnerName, ""));
+                    lobby.broadcastTournamentEvent(new MatchCompleteEvent(matchId, winnerName, ""));
                 }
                 trackedMatches.remove(matchId);
                 matchToPairing.remove(matchId);
@@ -257,8 +252,7 @@ public class ServerTournamentController implements IHasForgeLog {
                 stopPolling();
 
                 netLog.info("[Tournament] Round {} complete", completedRound);
-                lobby.broadcastTournamentEvent(
-                    new forge.gamemodes.net.event.RoundCompleteEvent(completedRound));
+                lobby.broadcastTournamentEvent(new RoundCompleteEvent(completedRound));
 
                 if (tournament.isTournamentOver()) {
                     onTournamentComplete();
@@ -300,7 +294,7 @@ public class ServerTournamentController implements IHasForgeLog {
 
     private void onTournamentComplete() {
         event.setPhase(EventPhase.TOURNAMENT_COMPLETE);
-        event.setRoundState(forge.gamemodes.net.RoundState.COMPLETE);
+        event.setRoundState(RoundState.COMPLETE);
 
         List<TournamentPlayer> ranked = new ArrayList<>(tournament.getAllPlayers());
         ranked.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
@@ -324,9 +318,8 @@ public class ServerTournamentController implements IHasForgeLog {
 
         server.broadcast(new MessageEvent(results.toString()));
 
-        java.util.List<forge.gamemodes.net.StandingView> finalStandings = buildFinalStandings();
-        lobby.broadcastTournamentEvent(
-            new forge.gamemodes.net.event.TournamentCompleteEvent(finalStandings, false));
+        List<StandingView> finalStandings = buildFinalStandings();
+        lobby.broadcastTournamentEvent(new TournamentCompleteEvent(finalStandings, false));
 
         server.updateLobbyState();
     }
@@ -363,8 +356,7 @@ public class ServerTournamentController implements IHasForgeLog {
         trackedMatches.clear();
         matchToPairing.clear();
 
-        lobby.broadcastTournamentEvent(
-            new forge.gamemodes.net.event.TournamentCompleteEvent(buildFinalStandings(), true));
+        lobby.broadcastTournamentEvent(new TournamentCompleteEvent(buildFinalStandings(), true));
     }
 
     private void enterBetweenRoundStandby() {
