@@ -295,7 +295,7 @@ public class HostedMatch {
             // concurrently clears the `game` field while match.startGame() is wrapping up.
             final Game currentGame = game;
 
-            if (humanCount == 0) {
+            if (humanCount == 0 && !humanControllers.isEmpty()) {
                 // Create FControlGamePlayback in game thread to allow pausing
                 playbackControl = new FControlGamePlayback(humanControllers.get(0));
                 playbackControl.setGame(currentGame);

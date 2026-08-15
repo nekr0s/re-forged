@@ -400,10 +400,31 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
 
     /**
      * Called when a player toggles ready during tournament between-round standby.
+     * Retained for safety; the host explicitly starts the next round via
+     * {@link #hostStartNextRound()}.
      */
     public void onPlayerReadyTournament(int slotIndex) {
-        // Tournament controller uses polling, so ready-check is handled there
-        // This method is a hook for future use when standby phase is implemented
+        if (tournamentController != null) {
+            tournamentController.onPlayerReady(slotIndex);
+        }
+    }
+
+    /**
+     * Whether every human participant has marked themselves ready during
+     * between-round standby. Used by the host UI to enable the
+     * "Start Next Round" button.
+     */
+    public boolean areAllHumansReadyForTournament() {
+        return tournamentController != null && tournamentController.isAllHumanPlayersReady();
+    }
+
+    /**
+     * Host action: start the next round of tournament matches.
+     */
+    public void hostStartNextRound() {
+        if (tournamentController != null) {
+            tournamentController.startNextRound();
+        }
     }
 
     /**

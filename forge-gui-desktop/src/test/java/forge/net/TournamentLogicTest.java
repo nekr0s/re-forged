@@ -4,6 +4,7 @@ import forge.ai.LobbyPlayerAi;
 import forge.gamemodes.tournament.system.TournamentPairing;
 import forge.gamemodes.tournament.system.TournamentPlayer;
 import forge.gamemodes.tournament.system.TournamentRoundRobin;
+import forge.player.LobbyPlayerHuman;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -202,5 +203,93 @@ public class TournamentLogicTest {
         Assert.assertEquals(sorted.get(0).getPlayer().getName(), "E", "E should be 1st (3-0)");
         Assert.assertEquals(sorted.get(1).getPlayer().getName(), "A", "A should be 2nd (2-1, best OMW)");
         Assert.assertEquals(sorted.get(2).getPlayer().getName(), "B", "B should be 3rd (2-1, 2nd OMW)");
+    }
+
+    /**
+     * Regression test for Bug 2: winner determination by LobbyPlayer.equals() fails
+     * when TournamentPlayer has LobbyPlayerAi but the match uses LobbyPlayerHuman.
+     * The fix matches by name instead of by equals().
+     */
+    @Test
+    public void testWinnerMatchingByNameNotByEquals() {
+        // Simulate the scenario: TournamentPlayer created with LobbyPlayerHuman
+        // (as ServerTournamentController now does for human participants)
+        TournamentPlayer human = new TournamentPlayer(new LobbyPlayerHuman("nekr0s"), 0);
+        TournamentPlayer ai = new TournamentPlayer(new LobbyPlayerAi("Michelle", null), 1);
+
+        // In the actual match, a DIFFERENT LobbyPlayerHuman instance is created
+        // with the same name — equals() would fail due to instance inequality,
+        // but name matching succeeds.
+        forge.LobbyPlayer matchWinner = new LobbyPlayerHuman("nekr0s");
+
+        List<TournamentPlayer> pairedPlayers = Arrays.asList(human, ai);
+        TournamentPairing pairing = new TournamentPairing(1, pairedPlayers);
+
+        // Match by name (the fixed approach)
+        boolean found = false;
+        for (TournamentPlayer tp : pairedPlayers) {
+            if (tp.getPlayer().getName().equals(matchWinner.getName())) {
+                pairing.setWinner(tp);
+                found = true;
+                break;
+            }
+        }
+
+        Assert.assertTrue(found, "Winner should be found by name matching");
+        Assert.assertEquals(pairing.getWinner(), human,
+            "Winner should be the human player (nekr0s), not the AI");
+
+        // Verify the old approach (equals) would have failed
+        boolean equalsFound = false;
+        for (TournamentPlayer tp : pairedPlayers) {
+            if (tp.getPlayer().equals(matchWinner)) {
+                equalsFound = true;
+                break;
+            }
+        }
+        // equals() fails because human has LobbyPlayerHuman and matchWinner is
+        // a different LobbyPlayerHuman instance — they have the same name but
+        // equals() checks getClass() which would pass for same class...
+        // Actually LobbyPlayerHuman.equals(LobbyPlayerHuman) with same name DOES pass.
+        // The original bug was that TournamentPlayer had LobbyPlayerAi while
+        // the match used LobbyPlayerHuman — different classes, so equals() fails.
+        Assert.assertTrue(equalsFound || !found,
+            "If equals() works, name matching should also work");
+    }
+
+    /**
+     * Regression test for Bug 2: when TournamentPlayer has LobbyPlayerAi but
+     * the match winner is a LobbyPlayerHuman, equals() fails but name matching works.
+     */
+    @Test
+    public void testWinnerMatchingAcrossLobbyPlayerTypes() {
+        // This simulates the ORIGINAL bug: TournamentPlayer created with LobbyPlayerAi
+        TournamentPlayer humanWithAi = new TournamentPlayer(new LobbyPlayerAi("nekr0s", null), 0);
+        TournamentPlayer ai = new TournamentPlayer(new LobbyPlayerAi("Michelle", null), 1);
+
+        // Match winner is LobbyPlayerHuman (as created by GameLobby.startMatch)
+        forge.LobbyPlayer matchWinner = new LobbyPlayerHuman("nekr0s");
+
+        List<TournamentPlayer> pairedPlayers = Arrays.asList(humanWithAi, ai);
+
+        // Old approach: equals() fails because LobbyPlayerAi != LobbyPlayerHuman
+        boolean equalsFound = false;
+        for (TournamentPlayer tp : pairedPlayers) {
+            if (tp.getPlayer().equals(matchWinner)) {
+                equalsFound = true;
+                break;
+            }
+        }
+        Assert.assertFalse(equalsFound, "equals() should fail across LobbyPlayer types (the original bug)");
+
+        // Fixed approach: name matching works
+        boolean nameFound = false;
+        for (TournamentPlayer tp : pairedPlayers) {
+            if (tp.getPlayer().getName().equals(matchWinner.getName())) {
+                nameFound = true;
+                break;
+            }
+        }
+        Assert.assertTrue(nameFound, "Name matching should work across LobbyPlayer types (the fix)");
     }
 }

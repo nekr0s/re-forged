@@ -223,6 +223,10 @@ public class CLobby implements IDraftEventHandler {
             currentStandings = newView.getStandings();
             inTournament = true;
         }
+
+        // Ready states may have changed (players toggling ready between rounds);
+        // refresh the host's tournament action buttons (e.g. "Start Next Round").
+        view.updateActionButtons();
     }
 
     /** Compute the event panel contents and push to the view. */

@@ -162,6 +162,7 @@ public class VLobby implements ILobbyView {
     private final FLabel lblTournamentPairings = new FLabel.Builder().fontSize(12).fontAlign(SwingConstants.LEFT).build();
     private final FButton btnStartTournament = new FButton("Start Tournament");
     private final FButton btnCancelTournament = new FButton("Cancel Tournament");
+    private final FButton btnStartNextRound = new FButton("Start Next Round");
 
     private boolean refreshGeneratedDecks = false;
 
@@ -311,13 +312,20 @@ public class VLobby implements ILobbyView {
             btnStartTournament.setFont(FSkin.getRelativeFont(18));
             btnStartTournament.addActionListener(e -> {
                 if (lobby instanceof ServerGameLobby sgl) {
-                    sgl.startTournament(3);
+                    int games = Integer.parseInt(gamesInMatch.getSelectedItem().toString());
+                    sgl.startTournament(games);
                 }
             });
             btnCancelTournament.setFont(FSkin.getRelativeFont(18));
             btnCancelTournament.addActionListener(e -> {
                 if (lobby instanceof ServerGameLobby sgl && sgl.getTournamentController() != null) {
                     sgl.getTournamentController().shutdown();
+                }
+            });
+            btnStartNextRound.setFont(FSkin.getRelativeFont(18));
+            btnStartNextRound.addActionListener(e -> {
+                if (lobby instanceof ServerGameLobby sgl) {
+                    sgl.hostStartNextRound();
                 }
             });
         }
@@ -1035,7 +1043,13 @@ public class VLobby implements ILobbyView {
 
                 if (inTournament) {
                     btnCancelTournament.setText("Cancel Tournament");
-                    pnlStart.add(btnCancelTournament, "cell 0 0, " + eventBtn);
+                    pnlStart.add(btnCancelTournament, "cell 0 0, " + eventBtn + ", gapright 20");
+
+                    boolean allReady = lobby instanceof ServerGameLobby sgl
+                            && sgl.areAllHumansReadyForTournament();
+                    btnStartNextRound.setEnabled(allReady);
+                    pnlStart.add(btnStartNextRound, "cell 1 0, " + eventBtn);
+
                     pnlStart.add(gamesInMatchFrame, "cell 0 1, align center");
                 } else {
                     final String label = (controller.getConfiguredFormat() == EventFormat.SEALED)
