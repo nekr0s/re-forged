@@ -93,6 +93,26 @@ NetworkEvent / NetworkEventView
   + roundState: RoundState      (NEW)
 ```
 
+### Round number semantics
+
+`NetworkEventView.currentRound` means "the round the UI should display," derived from the
+tournament engine's `activeRound` together with `roundState`. Because the engine advances
+`activeRound` when a round's last match completes (not when the next round starts), the
+displayed number must account for the between-round window:
+
+| `RoundState` | Displayed round | Source |
+|--------------|-----------------|--------|
+| `ACTIVE` | N (matches running) | `activeRound` |
+| `COMPLETE` | N (the round that just finished) | `activeRound - 1` |
+
+The subtraction is safe: the `COMPLETE` window only exists for `activeRound >= 2`, so
+`activeRound - 1 >= 1` is always valid. The final round uses a different rendering path
+(`TOURNAMENT_COMPLETE` -> final standings), where the engine calls `endTournament()` without
+incrementing, so the rule is not applied there.
+
+`NetworkEvent.toView()` computes `currentRound` from `roundState` and `activeRound`, so clients
+receive the correct number for the current state and need no off-by-one logic of their own.
+
 ## Files Affected
 
 | File | Change |
