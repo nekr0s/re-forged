@@ -26,6 +26,11 @@ public class TournamentRoundRobin extends AbstractTournament {
         this.playersInPairing = pairingAmount;
     }
 
+    public TournamentRoundRobin(List<TournamentPlayer> allPlayers) {
+        super(allPlayers.size() % 2 == 0 ? allPlayers.size() - 1 : allPlayers.size(), allPlayers);
+        initializeTournament();
+    }
+
     @Override
     public void generateActivePairings() {
         int numPlayers = this.remainingPlayers.size();

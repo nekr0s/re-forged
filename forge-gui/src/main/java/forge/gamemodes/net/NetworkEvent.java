@@ -5,14 +5,15 @@ import forge.deck.DeckProxy;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
 import forge.gamemodes.limited.SealedCardPoolGenerator;
+import forge.gamemodes.tournament.system.TournamentRoundRobin;
 import forge.model.FModel;
 import forge.util.Localizer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Model and helpers for a network limited event (draft or sealed).
@@ -41,9 +42,7 @@ public final class NetworkEvent {
     private int numRounds = 3;
     private SealedCardPoolGenerator sealedGenerator;
     private BoosterDraft draft;
-    private forge.gamemodes.tournament.system.TournamentRoundRobin tournament;
-    private int gamesPerMatch = 3;
-    private RoundState roundState = RoundState.NONE;
+    private TournamentRoundRobin tournament;
 
     public NetworkEvent(EventFormat format) {
         this.eventId = UUID.randomUUID().toString().substring(0, 8);
@@ -76,15 +75,6 @@ public final class NetworkEvent {
     public void setDraft(BoosterDraft draft) { this.draft = draft; }
     public int getNumRounds() { return numRounds; }
     public void setNumRounds(int numRounds) { this.numRounds = numRounds; }
-
-    public forge.gamemodes.tournament.system.TournamentRoundRobin getTournament() { return tournament; }
-    public void setTournament(forge.gamemodes.tournament.system.TournamentRoundRobin tournament) { this.tournament = tournament; }
-    public int getGamesPerMatch() { return gamesPerMatch; }
-    public void setGamesPerMatch(int gamesPerMatch) { this.gamesPerMatch = gamesPerMatch; }
-    public RoundState getRoundState() { return roundState; }
-    public void setRoundState(RoundState roundState) { this.roundState = roundState; }
-    public boolean isTournamentMode() { return tournament != null; }
-
     public void addParticipant(EventParticipant participant) {
         participants.add(participant);
     }
@@ -123,59 +113,8 @@ public final class NetworkEvent {
     }
 
     public NetworkEventView toView() {
-        int currentRound = 0;
-        int totalRounds = 0;
-        java.util.List<PairingView> pairings = java.util.Collections.emptyList();
-        java.util.List<StandingView> standings = java.util.Collections.emptyList();
-        java.util.Map<Integer, String> activeMatchIds = java.util.Collections.emptyMap();
-
-        if (tournament != null) {
-            int active = tournament.getActiveRound();
-            // The engine advances activeRound when a round's last match completes (not when
-            // the next round starts), so during COMPLETE the displayed round is activeRound - 1.
-            currentRound = (roundState == RoundState.COMPLETE) ? active - 1 : active;
-            totalRounds = tournament.getTotalRounds();
-            pairings = buildPairingViews();
-            standings = buildStandingViews();
-        }
-
         return new NetworkEventView(eventId, format, phase,
-                participants, pickTimerSeconds, productDescription, numRounds,
-                currentRound, totalRounds, pairings, standings,
-                gamesPerMatch, activeMatchIds, roundState);
-    }
-
-    private java.util.List<PairingView> buildPairingViews() {
-        java.util.List<PairingView> views = new java.util.ArrayList<>();
-        for (var pairing : tournament.getActivePairings()) {
-            var players = pairing.getPairedPlayers();
-            String playerA = players.size() > 0 ? players.get(0).getPlayer().getName() : "?";
-            String playerB = players.size() > 1 ? players.get(1).getPlayer().getName() : "?";
-            String winner = pairing.getWinner() != null ? pairing.getWinner().getPlayer().getName() : null;
-            var status = pairing.isBye()
-                    ? PairingView.PairingStatus.BYE
-                    : (pairing.getWinner() != null
-                        ? PairingView.PairingStatus.COMPLETE
-                        : PairingView.PairingStatus.ONGOING);
-            views.add(new PairingView(playerA, playerB, null, status, winner));
-        }
-        return views;
-    }
-
-    private java.util.List<StandingView> buildStandingViews() {
-        java.util.List<StandingView> views = new java.util.ArrayList<>();
-        var sorted = new java.util.ArrayList<>(tournament.getAllPlayers());
-        sorted.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
-        for (var tp : sorted) {
-            views.add(new StandingView(
-                    tp.getPlayer().getName(),
-                    tp.getWins(),
-                    tp.getLosses(),
-                    tp.getByes(),
-                    tp.getScore(),
-                    tp.getOMWPercent(tournament.getAllPlayers())));
-        }
-        return views;
+                participants, pickTimerSeconds, productDescription, numRounds);
     }
 
     /** An event id paired with its display label, e.g., for dialog-driven event selection. */

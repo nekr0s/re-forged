@@ -1,13 +1,5 @@
 package forge.gamemodes.net.server;
 
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
 import forge.deck.Deck;
@@ -20,7 +12,16 @@ import forge.gamemodes.net.event.*;
 import forge.gamemodes.tournament.system.TournamentPairing;
 import forge.gamemodes.tournament.system.TournamentPlayer;
 import forge.gamemodes.tournament.system.TournamentRoundRobin;
+import forge.player.GamePlayerUtil;
 import forge.util.IHasForgeLog;
+
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public class ServerTournamentController implements IHasForgeLog {
     private static final long POLL_INTERVAL_MS = 500L;
@@ -44,7 +45,7 @@ public class ServerTournamentController implements IHasForgeLog {
         for (EventParticipant ep : event.getParticipants()) {
             LobbyPlayer lobbyPlayer;
             if (ep.isHuman()) {
-                lobbyPlayer = forge.player.GamePlayerUtil.getGuiPlayer(ep.getName(), -1, -1, false);
+                lobbyPlayer = GamePlayerUtil.getGuiPlayer(ep.getName(), -1, -1, false);
             } else {
                 lobbyPlayer = new LobbyPlayerAi(ep.getName(), null);
             }
@@ -53,12 +54,9 @@ public class ServerTournamentController implements IHasForgeLog {
             players.add(tp);
         }
 
-        int totalRounds = event.getNumRounds();
-        this.tournament = new TournamentRoundRobin(totalRounds, players);
+        this.tournament = new TournamentRoundRobin(players);
 
-        event.setTournament(tournament);
-
-        netLog.info("[Tournament] Controller created — players={}, rounds={}", players.size(), totalRounds);
+        netLog.info("[Tournament] Controller created — players={}, rounds={}", players.size(), tournament.getTotalRounds());
     }
 
     public TournamentRoundRobin getTournament() {
@@ -67,9 +65,8 @@ public class ServerTournamentController implements IHasForgeLog {
 
     public synchronized void startTournament() {
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
-        event.setRoundState(forge.gamemodes.net.RoundState.ACTIVE);
         netLog.info("[Tournament] Tournament started — round 1 of {}", tournament.getTotalRounds());
-        lobby.broadcastTournamentEvent(new TournamentStartEvent(event.getEventId()));
+        lobby.broadcastTournamentEvent(new TournamentStartEvent(event.getEventId(), getTournament()));
         startRoundMatches();
         server.updateLobbyState();
     }
@@ -136,7 +133,7 @@ public class ServerTournamentController implements IHasForgeLog {
                 ? GameType.Sealed
                 : GameType.Constructed;
 
-        netLog.info("[Tournament] Starting match: {} (gamesPerMatch={})", formatPairing(pairing), event.getGamesPerMatch());
+        netLog.info("[Tournament] Starting match: {})", formatPairing(pairing));
 
         Runnable starter = lobby.startMatch(slotIndices, gameType, EnumSet.noneOf(GameType.class), hasHuman);
         if (starter == null) {
@@ -155,20 +152,12 @@ public class ServerTournamentController implements IHasForgeLog {
             netLog.info("[Tournament] Match started — matchId={}, round={}", matchId, tournament.getActiveRound());
 
             lobby.broadcastTournamentEvent(
-                new MatchStartedEvent(
-                    matchId,
-                    pairedPlayers.get(0).getPlayer().getName(),
-                    pairedPlayers.get(1).getPlayer().getName(),
-                    tournament.getActiveRound()));
-
-            int gamesPerMatch = event.getGamesPerMatch();
-            if (match.getMatch() != null && match.getMatch().getRules() != null) {
-                match.getMatch().getRules().setGamesPerMatch(gamesPerMatch);
-            }
-
-            server.broadcast(new MessageEvent(
-                    "Tournament round " + tournament.getActiveRound()
-                            + ": " + formatPairing(pairing)));
+                    new MatchStartedEvent(
+                            matchId,
+                            pairedPlayers.get(0).getPlayer().getName(),
+                            pairedPlayers.get(1).getPlayer().getName(),
+                            tournament.getActiveRound()));
+            server.broadcast(new MessageEvent("Tournament round " + tournament.getActiveRound() + ": " + formatPairing(pairing)));
         } else {
             netLog.warn("[Tournament] Could not find started HostedMatch for pairing {}", formatPairing(pairing));
         }
@@ -235,7 +224,7 @@ public class ServerTournamentController implements IHasForgeLog {
                     tournament.reportMatchCompletion(pairing);
 
                     String winnerName = pairing.getWinner() != null
-                        ? pairing.getWinner().getPlayer().getName() : null;
+                            ? pairing.getWinner().getPlayer().getName() : null;
                     netLog.info("[Tournament] Match complete — matchId={}, winner={}", matchId, winnerName);
                     lobby.broadcastTournamentEvent(new MatchCompleteEvent(matchId, winnerName, ""));
                 }
@@ -294,7 +283,6 @@ public class ServerTournamentController implements IHasForgeLog {
 
     private void onTournamentComplete() {
         event.setPhase(EventPhase.TOURNAMENT_COMPLETE);
-        event.setRoundState(RoundState.COMPLETE);
 
         List<TournamentPlayer> ranked = new ArrayList<>(tournament.getAllPlayers());
         ranked.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
@@ -324,16 +312,16 @@ public class ServerTournamentController implements IHasForgeLog {
         server.updateLobbyState();
     }
 
-    private java.util.List<forge.gamemodes.net.StandingView> buildFinalStandings() {
+    private java.util.List<StandingView> buildFinalStandings() {
         List<TournamentPlayer> ranked = new ArrayList<>(tournament.getAllPlayers());
         ranked.sort((a, b) -> {
             int scoreCmp = Integer.compare(b.getScore(), a.getScore());
             if (scoreCmp != 0) return scoreCmp;
             return Double.compare(b.getOMW(tournament.getAllPlayers()), a.getOMW(tournament.getAllPlayers()));
         });
-        List<forge.gamemodes.net.StandingView> views = new ArrayList<>();
+        List<StandingView> views = new ArrayList<>();
         for (TournamentPlayer tp : ranked) {
-            views.add(new forge.gamemodes.net.StandingView(
+            views.add(new StandingView(
                     tp.getPlayer().getName(),
                     tp.getWins(),
                     tp.getLosses(),
@@ -361,7 +349,6 @@ public class ServerTournamentController implements IHasForgeLog {
 
     private void enterBetweenRoundStandby() {
         inStandby = true;
-        event.setRoundState(forge.gamemodes.net.RoundState.COMPLETE);
 
         for (EventParticipant ep : event.getParticipants()) {
             if (ep.isHuman()) {
@@ -424,16 +411,12 @@ public class ServerTournamentController implements IHasForgeLog {
         }
         netLog.info("[Tournament] Host starting next round (round {})", tournament.getActiveRound());
         inStandby = false;
-        event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
-        event.setRoundState(forge.gamemodes.net.RoundState.ACTIVE);
         startRoundMatches();
         server.updateLobbyState();
     }
 
     private void proceedToNextRound() {
         inStandby = false;
-        event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
-        event.setRoundState(forge.gamemodes.net.RoundState.ACTIVE);
         startRoundMatches();
         server.updateLobbyState();
     }

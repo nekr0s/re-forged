@@ -18,10 +18,10 @@ import forge.gamemodes.net.CompatibleObjectEncoder;
 import forge.gamemodes.net.EventPhase;
 import forge.gamemodes.net.NetworkLogConfig;
 import forge.gamemodes.net.draft.BoosterDraftHost;
+import forge.gui.interfaces.INetEventHandler;
 import forge.util.IHasForgeLog;
 import forge.gamemodes.net.event.*;
 import forge.gui.GuiBase;
-import forge.gui.interfaces.IDraftEventHandler;
 import forge.gui.interfaces.IGuiGame;
 import forge.gui.util.SOptionPane;
 import forge.interfaces.IGameController;
@@ -153,7 +153,7 @@ public final class FServerManager implements IHasForgeLog {
     private UpnpService upnpService = null;
     private ServerGameLobby localLobby;
     private ILobbyListener lobbyListener;
-    private IDraftEventHandler draftHandler;
+    private List<INetEventHandler> netEventHandlers;
     private boolean UPnPMapped = false;
     private int port;
     private static final Localizer localizer = Localizer.getInstance();
@@ -381,8 +381,8 @@ public final class FServerManager implements IHasForgeLog {
             if (lobbyListener != null) {
                 lobbyListener.message(e.getSource(), e.getMessage(), e.getType());
             }
-        } else if (draftHandler != null) {
-            draftHandler.dispatch(event);
+        } else if (netEventHandlers != null) {
+            netEventHandlers.forEach(handler -> handler.dispatch(event));
         }
     }
 
@@ -555,8 +555,11 @@ public final class FServerManager implements IHasForgeLog {
         this.lobbyListener = listener;
     }
 
-    public void setDraftHandler(final IDraftEventHandler handler) {
-        this.draftHandler = handler;
+    public void addNetEventHandler(final INetEventHandler handler) {
+        if (netEventHandlers == null) {
+            netEventHandlers = new ArrayList<>();
+        }
+        netEventHandlers.add(handler);
     }
 
     /**

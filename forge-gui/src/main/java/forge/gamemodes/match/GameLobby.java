@@ -657,9 +657,6 @@ public abstract class GameLobby implements IHasGameType {
 
     protected void onMatchOver(String matchId) {
         activeMatches.unregister(matchId);
-        // Clear controllers for this match's slots only
-        // The caller (HostedMatch callback) knows which slots were involved
-        // For backward compat: if no matches remain, clear all and update view
         if (activeMatches.isEmpty()) {
             gameControllers.clear();
             updateView(true);

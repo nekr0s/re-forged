@@ -24,6 +24,7 @@ import forge.gamemodes.match.LobbySlotType;
 import forge.gamemodes.net.*;
 import forge.gamemodes.net.server.ServerGameLobby;
 import forge.gamemodes.net.event.UpdateLobbyPlayerEvent;
+import forge.gamemodes.tournament.system.TournamentRoundRobin;
 import forge.gui.CardDetailPanel;
 import forge.gui.FThreads;
 import forge.gui.SwingPrefBinders;
@@ -41,6 +42,8 @@ import forge.toolbox.*;
 import forge.toolbox.FSkin.SkinImage;
 import forge.util.*;
 import net.miginfocom.swing.MigLayout;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Lobby view. View of a number of players at the deck selection stage.
@@ -312,8 +315,8 @@ public class VLobby implements ILobbyView {
             btnStartTournament.setFont(FSkin.getRelativeFont(18));
             btnStartTournament.addActionListener(e -> {
                 if (lobby instanceof ServerGameLobby sgl) {
-                    int games = Integer.parseInt(gamesInMatch.getSelectedItem().toString());
-                    sgl.startTournament(games);
+                    int gamesPerMatch = Integer.parseInt(requireNonNull(gamesInMatch.getSelectedItem()).toString());
+                    sgl.startTournament(gamesPerMatch);
                 }
             });
             btnCancelTournament.setFont(FSkin.getRelativeFont(18));
@@ -932,21 +935,22 @@ public class VLobby implements ILobbyView {
         tournamentPanel.setVisible(true);
         tournamentPanel.removeAll();
 
-        int round = controller.getTournamentCurrentRound();
-        int total = controller.getTournamentTotalRounds();
+        var tournament = controller.getTournament();
+        int round = tournament.getActiveRound();
+        int total = tournament.getTotalRounds();
         RoundState roundState = controller.getCurrentRoundState();
         lblTournamentTitle.setText("Tournament");
         if (roundState == RoundState.ACTIVE) {
             lblTournamentRound.setText("Round " + round + " of " + total + " in progress");
         } else if (roundState == RoundState.COMPLETE) {
-            lblTournamentRound.setText("Round " + round + " complete — waiting for host to start round " + (round + 1));
+            lblTournamentRound.setText("Round " + (round - 1) + " complete — waiting for host to start round " + round);
         } else {
             lblTournamentRound.setText("Round " + round + " of " + total);
         }
 
         StringBuilder standingsText = new StringBuilder("<html>");
-        var standings = controller.getCurrentStandings();
-        if (standings != null && !standings.isEmpty()) {
+        var standings = buildStandingViews(tournament);
+        if (!standings.isEmpty()) {
             standingsText.append("<b>Standings:</b><br>");
             int rank = 1;
             for (var s : standings) {
@@ -958,9 +962,9 @@ public class VLobby implements ILobbyView {
         lblTournamentStandings.setText(standingsText.toString());
 
         StringBuilder pairingsText = new StringBuilder("<html>");
-        var pairings = controller.getCurrentPairings();
-        if (pairings != null && !pairings.isEmpty()) {
-            pairingsText.append("<b>").append(roundState == forge.gamemodes.net.RoundState.COMPLETE ? "Last Round:" : "Current Round:").append("</b><br>");
+        var pairings = buildPairingViews(tournament);
+        if (!pairings.isEmpty()) {
+            pairingsText.append("<b>").append(roundState == RoundState.COMPLETE ? "Last Round:" : "Current Round:").append("</b><br>");
             for (var p : pairings) {
                 String status = switch (p.status()) {
                     case ONGOING -> " [Spectate]";
@@ -983,7 +987,40 @@ public class VLobby implements ILobbyView {
         tournamentPanel.repaint();
     }
 
-    void showTournamentResults(java.util.List<forge.gamemodes.net.StandingView> standings, boolean cancelled) {
+    private List<PairingView> buildPairingViews(TournamentRoundRobin tournament) {
+        List<PairingView> views = new ArrayList<>();
+        for (var pairing : tournament.getActivePairings()) {
+            var players = pairing.getPairedPlayers();
+            String playerA = !players.isEmpty() ? players.get(0).getPlayer().getName() : "?";
+            String playerB = players.size() > 1 ? players.get(1).getPlayer().getName() : "?";
+            String winner = pairing.getWinner() != null ? pairing.getWinner().getPlayer().getName() : null;
+            var status = pairing.isBye()
+                    ? PairingView.PairingStatus.BYE
+                    : (pairing.getWinner() != null
+                    ? PairingView.PairingStatus.COMPLETE
+                    : PairingView.PairingStatus.ONGOING);
+            views.add(new PairingView(playerA, playerB, null, status, winner));
+        }
+        return views;
+    }
+
+    private List<StandingView> buildStandingViews(TournamentRoundRobin tournament) {
+        List<StandingView> views = new ArrayList<>();
+        var sorted = new ArrayList<>(tournament.getAllPlayers());
+        sorted.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
+        for (var tp : sorted) {
+            views.add(new StandingView(
+                    tp.getPlayer().getName(),
+                    tp.getWins(),
+                    tp.getLosses(),
+                    tp.getByes(),
+                    tp.getScore(),
+                    tp.getOMWPercent(tournament.getAllPlayers())));
+        }
+        return views;
+    }
+
+    void showTournamentResults(List<StandingView> standings, boolean cancelled) {
         StringBuilder sb = new StringBuilder();
         if (cancelled) {
             sb.append("Tournament Cancelled\n\n");
@@ -1066,7 +1103,7 @@ public class VLobby implements ILobbyView {
                     boolean isExistingEvent = controller.getActiveEventId() != null;
                     btnStartEvent.setEnabled(controller.getConfiguredFormat() != null && !isExistingEvent);
                     btnStartMatch.setEnabled(isExistingEvent);
-                    btnStartTournament.setEnabled(controller.getConfiguredFormat() != null || isExistingEvent);
+                    btnStartTournament.setEnabled(isExistingEvent);
                     pnlStart.add(btnNewEvent, "cell 0 0, " + eventBtn + ", gapright 20");
                     pnlStart.add(btnStartEvent, "cell 1 0, " + eventBtn + ", gapright 20");
                     pnlStart.add(btnStartMatch, "cell 2 0, " + eventBtn);

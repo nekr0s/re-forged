@@ -2,7 +2,9 @@ package forge.gamemodes.net.server;
 
 import forge.deck.CardPool;
 import forge.deck.Deck;
+import forge.deck.DeckFormat;
 import forge.deck.DeckSection;
+import forge.game.GameType;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
 import forge.gamemodes.limited.SealedCardPoolGenerator;
@@ -20,6 +22,8 @@ import forge.gamemodes.net.event.DraftPickEvent;
 import forge.gamemodes.net.event.NetEvent;
 import forge.gamemodes.net.event.ReceiveEventPoolEvent;
 import forge.gui.interfaces.IGuiGame;
+import forge.localinstance.properties.ForgePreferences;
+import forge.model.FModel;
 import forge.util.IHasForgeLog;
 import org.apache.commons.lang3.StringUtils;
 
@@ -393,7 +397,22 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
             }
         }
 
-        event.setGamesPerMatch(gamesPerMatch);
+        final boolean checkLegality = FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.ENFORCE_DECK_LEGALITY);
+        final List<String> legalityProblems = new ArrayList<>();
+
+        //Auto-generated decks don't need to be checked here
+        //Commander deck replaces regular deck and is checked later
+//        if (checkLegality && autoGenerateVariant == null) {
+//            final DeckFormat deckFormat = data.isLimitedMode() ? DeckFormat.Limited : GameType.Constructed.getDeckFormat();
+//            for (final LobbySlot slot : activeSlots) {
+//                final String name = slot.getName();
+//                final String errMsg = deckFormat.getDeckConformanceProblem(slot.getDeck());
+//                if (null != errMsg) {
+//                    legalityProblems.add(legalityProblemEntry(name, errMsg));
+//                }
+//            }
+//        }
+
         tournamentController = new ServerTournamentController(this, event);
         tournamentController.startTournament();
         netLog.info("Tournament started — gamesPerMatch={}", gamesPerMatch);

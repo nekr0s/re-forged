@@ -1,5 +1,8 @@
 package forge.gamemodes.net;
 
+import forge.localinstance.properties.ForgePreferences;
+import forge.model.FModel;
+
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
@@ -18,57 +21,20 @@ public final class NetworkEventView implements Serializable {
     private final List<EventParticipant> participants;
     private final int pickTimerSeconds;
     private final String productDescription;
-    private final int numRounds;
-    private final int currentRound;
-    private final int totalRounds;
-    private final java.util.List<PairingView> pairings;
-    private final java.util.List<StandingView> standings;
-    private final int gamesPerMatch;
-    private final java.util.Map<Integer, String> activeMatchIds;
-    private final RoundState roundState;
+    private final int numDraftRounds;
+//    private final Map<Integer, String> activeMatchIds;
 
-    // Backward-compat constructor (no tournament state)
+    // Full constructor with tournament state and draft state
     public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
             List<EventParticipant> participants, int pickTimerSeconds,
-            String productDescription, int numRounds) {
-        this(eventId, format, phase, participants, pickTimerSeconds, productDescription, numRounds,
-                0, 0, java.util.Collections.emptyList(), java.util.Collections.emptyList(),
-                3, java.util.Collections.emptyMap(), RoundState.NONE);
-    }
-
-    // Full constructor with tournament state
-    public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
-            List<EventParticipant> participants, int pickTimerSeconds,
-            String productDescription, int numRounds,
-            int currentRound, int totalRounds,
-            List<PairingView> pairings, List<StandingView> standings,
-            int gamesPerMatch, Map<Integer, String> activeMatchIds) {
-        this(eventId, format, phase, participants, pickTimerSeconds, productDescription, numRounds,
-                currentRound, totalRounds, pairings, standings,
-                gamesPerMatch, activeMatchIds, RoundState.NONE);
-    }
-
-    // Full constructor with tournament state and round state
-    public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
-            List<EventParticipant> participants, int pickTimerSeconds,
-            String productDescription, int numRounds,
-            int currentRound, int totalRounds,
-            List<PairingView> pairings, List<StandingView> standings,
-            int gamesPerMatch, Map<Integer, String> activeMatchIds, RoundState roundState) {
+            String productDescription, int numDraftRounds) {
         this.eventId = eventId;
         this.format = format;
         this.phase = phase;
         this.participants = List.copyOf(participants);
         this.pickTimerSeconds = pickTimerSeconds;
         this.productDescription = productDescription;
-        this.numRounds = numRounds;
-        this.currentRound = currentRound;
-        this.totalRounds = totalRounds;
-        this.pairings = List.copyOf(pairings);
-        this.standings = List.copyOf(standings);
-        this.gamesPerMatch = gamesPerMatch;
-        this.activeMatchIds = Map.copyOf(activeMatchIds);
-        this.roundState = roundState;
+        this.numDraftRounds = numDraftRounds;
     }
 
     public String getEventId() { return eventId; }
@@ -77,16 +43,5 @@ public final class NetworkEventView implements Serializable {
     public List<EventParticipant> getParticipants() { return participants; }
     public int getPickTimerSeconds() { return pickTimerSeconds; }
     public String getProductDescription() { return productDescription; }
-    public int getNumRounds() { return numRounds; }
-    public int getCurrentRound() { return currentRound; }
-    public int getTotalRounds() { return totalRounds; }
-    public List<PairingView> getPairings() { return pairings; }
-    public List<StandingView> getStandings() { return standings; }
-    public int getGamesPerMatch() { return gamesPerMatch; }
-    public Map<Integer, String> getActiveMatchIds() { return activeMatchIds; }
-    public RoundState getRoundState() { return roundState; }
-
-    public boolean isTournamentActive() {
-        return totalRounds > 0 && !standings.isEmpty();
-    }
+    public int getNumDraftRounds() { return numDraftRounds; }
 }

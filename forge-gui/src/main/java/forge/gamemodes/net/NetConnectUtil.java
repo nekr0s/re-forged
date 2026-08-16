@@ -93,7 +93,7 @@ public class NetConnectUtil {
                 return null;
             }
         });
-        server.setDraftHandler(view.getDraftHandler());
+        server.addNetEventHandler(view.getDraftHandler());
         chatInterface.setGameClient(new IRemote() {
             @Override
             public void send(final NetEvent event) {
