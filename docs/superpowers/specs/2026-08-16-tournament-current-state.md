@@ -110,14 +110,27 @@ loop back through the network channel).
 
 ## Known Gaps & Remediation Guidance
 
-### Gap 1 — Remote clients render a frozen tournament snapshot (the root of the "inconsistent screens" bug)
+### Gap 1 — Remote clients never receive the tournament state (confirmed root cause of "panel missing on clients")
 
-`TournamentStartEvent` serializes the entire `TournamentRoundRobin`. On the **host** this is
-the *same live object* (in-process broadcast), so the panel stays accurate. On **remote
-clients** it is a one-time snapshot: `getActiveRound()` stays 1, pairings never advance past
-round 1, standings stay 0–0, and the round-complete text reads "Round 0 complete". The
-`MatchStarted/MatchComplete/RoundComplete` events only flip `RoundState`; they carry no data
-to rebuild pairings or standings.
+`TournamentStartEvent` carries the whole `TournamentRoundRobin`. On the **host** this is the
+*same live object* (in-process broadcast via `dispatchToLocalListener`), so the host's panel
+works. On **remote clients** the event must be Java-serialized — and it **cannot be**:
+`TournamentPlayer` and `TournamentPairing` do **not** implement `Serializable`
+(`public class TournamentPlayer {`), so `RemoteClient.send` throws `NotSerializableException`
+inside `encodeOnCallingThread`, logs "Network encode error", and **silently drops the event**.
+The connection survives.
+
+Consequences:
+- Remote clients never receive `onTournamentStart` → `CLobby.tournament` stays `null` →
+  `isInTournament()` false → `updateRightPanelForMode()` never adds `tournamentPanel` → **no
+  panel on clients**, while the host's panel works. (Observed symptom: "Tournament Panel does
+  not visualize for clients of the lobby".)
+- `MatchStartedEvent` / `RoundCompleteEvent` / `TournamentCompleteEvent` *do* serialize (plain
+  fields), so clients still get pulled into matches and see the final-results dialog — only
+  the in-progress panel is absent.
+- Even if the classes were made serializable, the client would hold a **one-time frozen
+  snapshot** (pairings never advance past round 1, standings stay 0–0) because nothing pushes
+  updates — the "stale" failure mode behind the "dropped" one.
 
 **Guidance:** stop shipping the engine object. Make the server the single source of truth and
 broadcast a wire-safe snapshot on every state change — either a new
@@ -259,6 +272,137 @@ exists.
 - `TournamentStartEvent` also leaks server-only objects (`LobbyPlayer`/`LobbyPlayerAi`) onto
   the wire; fixed by Gap 1.
 
+### Gap 11 — Server-initiated ready writes bypass the notification funnel (confirmed root cause of the ready-checkbox bug)
+
+The ready flag lives once on the server (`LobbySlot.isReady`) and is displayed on every
+screen. All **player-initiated** changes flow through a single funnel
+(`applyToSlot` → `updateView` → refresh the host's own screen **and** broadcast
+`LobbyUpdateEvent` to remote clients). The tournament controller instead writes the flag
+**directly** — `slot.setIsReady(true)` in `startMatchForPairing`, `slot.setIsReady(false)` in
+`enterBetweenRoundStandby`, and again in `ServerGameLobby.onMatchOver(matchId)` — and only
+emits the network half (`server.updateLobbyState()`), never the host's in-process refresh.
+
+Result (observed symptom: "ready button stays checked between rounds, we must uncheck it"):
+- The server's truth is correct (not-ready), but the host's screen was last rendered *before*
+  the reset — when `startMatchForPairing` marked everyone ready — so the host's lobby shows
+  everyone checked and the "Start Next Round" button disabled.
+- Remote clients *do* get the broadcast and show unchecked, so the same slot disagrees across
+  screens (host checked, client unchecked).
+- Manually unchecking/re-checking routes through the normal funnel and finally re-syncs the
+  host's screen — the "we need to uncheck it" workaround.
+
+**Guidance:** route every server-initiated ready change through the same slot-update path the
+player path uses so the funnel's host-refresh half always fires; and stop pre-setting ready as
+a match-starting mechanism — the flag should only mean "ready in standby" (see the appendix
+trail below).
+
+### Gap 12 — Tournament start lacks the legacy ready/deck/legality gate and failure feedback
+
+The legacy "Start Match" path (`GameLobby.startGame`) validates before starting and tells the
+host *why* it refuses: per-slot "Player X is not ready" and "Please specify player deck" dialogs,
+plus a deck-legality gate (`DeckFormat.Limited.getDeckConformanceProblem` per slot, collected
+into a list and shown in an Ignore/Cancel dialog — Cancel aborts the start). The tournament path
+lost most of this:
+
+- `ServerGameLobby.startTournament` checks ready + deck for humans, but on failure only does
+  `netLog.warn(...)` and returns — **the host's "Start Tournament" click silently does nothing**
+  if someone isn't ready or has no deck.
+- The **deck-legality check is commented out** in `startTournament` (lines ~405–414) — scaffolded
+  but never finished.
+- `ServerTournamentController.startMatchForPairing` does no ready/deck/legality validation per
+  round; it only skips pairings with fewer than 2 slots (log-only).
+
+**Guidance:**
+- Rebuild the start gate in `ServerGameLobby.startTournament`: for every human participant,
+  collect ready problems and deck problems, plus `DeckFormat.Limited.getDeckConformanceProblem(slot.getDeck())`
+  for all participants when `ENFORCE_DECK_LEGALITY` is on. Present the collected problems to the
+  host with an Ignore/Cancel affordance; only proceed if accepted. Because decks are frozen for
+  the whole tournament (no between-round editing today), **one check at tournament start covers
+  every round** — re-check per round only if Gap 7's between-round deck editing is added later.
+- On failure, surface feedback: the legacy-style host dialog **and/or** a broadcast chat
+  `MessageEvent` so every player in the lobby knows why the tournament didn't start. A silent
+  no-op button is the worst failure mode.
+- Reuse the legacy dialog helpers: `confirmIgnoreDeckLegality` / `legalityProblemEntry` are
+  currently `private` in `GameLobby` — make them `protected` so `ServerGameLobby` can reuse them
+  and the two flows stay identical. If they can't be reused, replicate the small dialog verbatim.
+- **Round-level nicety (optional):** "Start Next Round" is already gated on
+  `areAllHumansReadyForTournament`, but the *disabled-with-no-explanation* button is confusing.
+  Add a tooltip ("Waiting for all players to ready") or a chat message when the host attempts to
+  start while not everyone is ready.
+- Skip the legacy min-players/teams and variant (schemes/planes/vanguard) checks — not applicable
+  to sealed/draft tournaments.
+- Since `startTournament`/`startMatchForPairing` are already being touched (Gap 2/3, Gap 11),
+  fold this gate into `startTournament` as the single validation point before the controller is
+  created.
+
+## Appendix A — The Ready-Button Flow Trail (how to trace Symptom 1)
+
+### The working funnel (player clicks "Ready")
+
+```
+PlayerPanel.chkReady ──► VLobby.setReady(index, ready)
+                             │  sends UpdateLobbyPlayerEvent.isReadyUpdate(ready)  [request, not local change]
+                             ▼
+                     FServerManager.updateSlot ──► GameLobby.applyToSlot  [single legitimate writer]
+                                                          │  slot.apply(event)  →  isReady = ...
+                                                          │  if changed ──► updateView(false)
+                                                          ▼
+                                              NetConnectUtil.host listener = the FUNNEL
+                                                   │                            │
+                                                   ▼                            ▼
+                                      view.update(...)                server.updateLobbyState()
+                                   (refresh host's screen)           (broadcast LobbyUpdateEvent)
+                                                                              │
+                                                                              ▼
+                                                         remote client: FGameClient.LobbyUpdateHandler
+                                                                              │  listener.update(state, slot)
+                                                                              ▼
+                                                              ClientGameLobby.setData ──► updateView
+                                                                              │
+                                                                              ▼
+                                                              VLobby.updateImpl ──► panel.setIsReady(slot.isReady())
+                                                                              ▼
+                                                          PlayerPanel renders checkbox from server truth
+```
+
+Key rule: **every write ends in "tell every screen, both channels"** (host in-process +
+network broadcast). `applyToSlot` is the only authorized writer.
+
+### The bypass (tournament's silent writes)
+
+```
+ServerTournamentController.startMatchForPairing   ──► slot.setIsReady(true)      ✗ direct write
+ServerTournamentController.enterBetweenRoundStandby ─► slot.setIsReady(false)     ✗ direct write
+ServerGameLobby.onMatchOver(matchId)                ─► slot.setIsReady(false)     ✗ direct write
+        └── then only: server.updateLobbyState()  (network half; host's own screen never re-renders)
+```
+
+`HostedMatch`'s `onMatchOver` callback (fired on the EDT when a match ends) re-renders the
+host's screen **before** the poll thread's standby reset runs, giving the host one final stale
+"everyone ready" render — after which nothing re-renders it.
+
+### Class trail (in reading order)
+
+| # | Class | Where | What it does in this flow |
+|---|-------|-------|---------------------------|
+| 1 | `PlayerPanel` | `forge-gui-desktop/.../home/PlayerPanel.java` | Per-player panel; `chkReady` listener (line ~601) starts the flow; `setIsReady(boolean)` re-renders the checkbox from server truth. |
+| 2 | `VLobby` | `forge-gui-desktop/.../home/VLobby.java` | Lobby view. `setReady` (line 549) sends the request via `playerChangeListener`; `updateImpl` (line 458) is the only place a screen re-renders ready from `slot.isReady()`. |
+| 3 | `NetConnectUtil` | `forge-gui/.../net/NetConnectUtil.java` | Wiring hub. `host()` line 76 binds the player-change hook to `server::updateSlot`; lines 65–73 are the funnel (host refresh + broadcast); `join()` lines 184–197 bind incoming state to `lobby.setData`. |
+| 4 | `FServerManager` | `forge-gui/.../net/server/FServerManager.java` | `updateSlot` (line 579) applies the request; `updateLobbyState` (line 572) is the network broadcast half. |
+| 5 | `GameLobby` | `forge-gui/.../match/GameLobby.java` | `applyToSlot` (line 127) = the single legitimate writer → `updateView` (line 362) → funnel; `setData` (line 79) is the client's incoming entry. |
+| 6 | `LobbySlot` | `forge-gui/.../match/LobbySlot.java` | The flag's home: `isReady` field, `setIsReady` (line 140), `isReady()` (line 137, true for AI), `apply` (line 45, the authorized setter). |
+| 7 | `ServerGameLobby` | `forge-gui/.../net/server/ServerGameLobby.java` | `updateView` (line 51) stamps the event view then calls super; `onMatchOver(matchId)` (line 155) is one of the silent writers. |
+| 8 | `FGameClient` | `forge-gui/.../net/client/FGameClient.java` | Remote side: `LobbyUpdateHandler.channelRead` (line 192) → `listener.update(state, slot)`. |
+| 9 | `ClientGameLobby` | `forge-gui/.../net/client/ClientGameLobby.java` | Client lobby; `setData` (inherited) triggers the view refresh. |
+| 10 | `ServerTournamentController` | `forge-gui/.../net/server/ServerTournamentController.java` | The silent writer: `startMatchForPairing` (`slot.setIsReady(true)`), `enterBetweenRoundStandby` (`slot.setIsReady(false)`), then only `updateLobbyState()`. |
+| 11 | `HostedMatch` | `forge-gui/.../match/HostedMatch.java` | Timing: fires `onMatchOver` (line 574) on the EDT before the poll's standby reset, so the host's screen renders stale "ready" one last time. |
+
+### Where to focus
+
+Compare step 5 (`applyToSlot` → `updateView` → both channels) with step 10's direct
+`slot.setIsReady(...)` + network-only `updateLobbyState()`. That asymmetry — the funnel's
+host-refresh half vs. the tournament's network-only half — is the entire bug.
+
 ## Bug-Fix Log (manual fixes that shaped the current design)
 
 - **Winner by name, not `equals()`.** Tournament players used `LobbyPlayerAi`/`LobbyPlayerHuman`
@@ -277,6 +421,13 @@ exists.
   an `ITournamentEventHandler`; `NetConnectUtil` now registers the draft/tournament handler
   via `addNetEventHandler`. *Note: Gap 1 is the remaining half of this fix — the client still
   derives its panel from the one-shot `TournamentStartEvent` snapshot.*
+- **Confirmed (symptom: tournament panel missing on clients):** `TournamentStartEvent` can't be
+  serialized — `TournamentPlayer`/`TournamentPairing` aren't `Serializable` — so it's dropped
+  server-side and remote clients never get tournament state. See Gap 1.
+- **Confirmed (symptom: ready checkbox stuck checked on the host between rounds):** the
+  controller writes `slot.setIsReady` directly without the `applyToSlot`/`updateView` funnel,
+  so only the network half fires and the host's own screen never re-renders. See Gap 11 and
+  Appendix A.
 
 ## Files of Interest
 
@@ -285,22 +436,30 @@ exists.
 | `forge-gui/.../net/server/ServerTournamentController.java` | Tournament orchestration (poll-based) |
 | `forge-gui/.../net/server/ServerGameLobby.java` | `startTournament`, standby gates, `onMatchOver(matchId)` |
 | `forge-gui/.../net/server/FServerManager.java` | broadcast to host+clients, spectate request/leave handling |
-| `forge-gui/.../net/match/GameLobby.java` | `MatchRegistry`, `startMatch(subset, ..., autoSpectate)` |
+| `forge-gui/.../net/NetConnectUtil.java` | wiring hub: host funnel + client binding (see Appendix A) |
+| `forge-gui/.../match/GameLobby.java` | `MatchRegistry`, `startMatch(subset, ..., autoSpectate)`, `applyToSlot` (single ready writer) |
+| `forge-gui/.../match/LobbySlot.java` | the ready flag's home; `isReady()`/`setIsReady()`/`apply()` |
 | `forge-gui/.../net/event/*` | Tournament event classes |
 | `forge-gui/.../net/{PairingView,StandingView,RoundState,EventPhase}.java` | Wire records / enums |
 | `forge-gui-desktop/.../home/{CLobby,VLobby}.java` | Client state + tournament panel |
+| `forge-gui-desktop/.../home/PlayerPanel.java` | ready checkbox (request out / render in) |
 | `forge-gui-desktop/.../match/{ViewWinLose,NetworkTournamentWinLose}.java` | WinLose integration |
 | `forge-gui-desktop/src/test/java/forge/net/TournamentLogicTest.java` | Engine/unit coverage |
 
 ## Recommended Next Steps (priority order)
 
 1. **Gap 1** — server-authoritative `TournamentUpdateEvent` snapshot; delete client-side
-   re-derivation and the engine object on the wire. This resolves the recurring
-   "inconsistent screens" class of bug at the root.
-2. **Gap 2 + Gap 3 + Gap 4** — wire `gamesPerMatch`, fix draft game type, and gate WinLose
+   re-derivation and the engine object on the wire (which can't even be serialized today).
+   This fixes the missing panel on clients and the recurring "inconsistent screens" bug at
+   the root.
+2. **Gap 11** — route server-initiated ready writes through the `applyToSlot`/`updateView`
+   funnel (fixes the host's stale ready checkbox).
+3. **Gap 12** — rebuild the legacy ready/deck/legality start gate + failure feedback in
+   `startTournament` (reuse `confirmIgnoreDeckLegality` by making it `protected`).
+4. **Gap 2 + Gap 3 + Gap 4** — wire `gamesPerMatch`, fix draft game type, and gate WinLose
    on real tournament membership. Small, high-value correctness fixes.
-3. **Gap 5** — complete the client side of spectating (depends on Gap 1's real `matchId`).
-4. **Gap 8** — draw/void policy for winner determination.
-5. **Gap 9** — headless end-to-end tournament test.
-6. **Gap 6/Gap 7** — clean up dead code, document the manual-continue and host-controlled
+5. **Gap 5** — complete the client side of spectating (depends on Gap 1's real `matchId`).
+6. **Gap 8** — draw/void policy for winner determination.
+7. **Gap 9** — headless end-to-end tournament test.
+8. **Gap 6/Gap 7** — clean up dead code, document the manual-continue and host-controlled
    standby choices.

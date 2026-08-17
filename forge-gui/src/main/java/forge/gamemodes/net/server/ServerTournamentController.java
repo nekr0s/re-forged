@@ -120,7 +120,6 @@ public class ServerTournamentController implements IHasForgeLog {
             if (deck != null) {
                 slot.setDeck(deck);
             }
-            slot.setIsReady(true);
             slotIndices.add(ep.getLobbySlotIndex());
         }
 
@@ -354,7 +353,7 @@ public class ServerTournamentController implements IHasForgeLog {
             if (ep.isHuman()) {
                 LobbySlot slot = lobby.getSlot(ep.getLobbySlotIndex());
                 if (slot != null) {
-                    slot.setIsReady(false);
+                    lobby.setPlayerReady(ep.getLobbySlotIndex(), false);
                 }
             }
         }
@@ -377,7 +376,6 @@ public class ServerTournamentController implements IHasForgeLog {
         netLog.info("[Tournament] Entering between-round standby — waiting for host to start the next round");
         server.broadcast(new MessageEvent(
                 "Round " + completedRound + " complete. All players, click Ready. The host will start the next round."));
-        server.updateLobbyState();
     }
 
     public synchronized void onPlayerReady(int slotIndex) {

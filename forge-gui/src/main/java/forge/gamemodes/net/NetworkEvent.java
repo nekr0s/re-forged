@@ -8,8 +8,6 @@ import forge.gamemodes.limited.SealedCardPoolGenerator;
 import forge.gamemodes.tournament.system.TournamentRoundRobin;
 import forge.model.FModel;
 import forge.util.Localizer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;

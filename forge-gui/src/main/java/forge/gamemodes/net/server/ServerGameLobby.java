@@ -2,9 +2,7 @@ package forge.gamemodes.net.server;
 
 import forge.deck.CardPool;
 import forge.deck.Deck;
-import forge.deck.DeckFormat;
 import forge.deck.DeckSection;
-import forge.game.GameType;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
 import forge.gamemodes.limited.SealedCardPoolGenerator;
@@ -21,6 +19,7 @@ import forge.gamemodes.net.NetworkEvent;
 import forge.gamemodes.net.event.DraftPickEvent;
 import forge.gamemodes.net.event.NetEvent;
 import forge.gamemodes.net.event.ReceiveEventPoolEvent;
+import forge.gamemodes.net.event.UpdateLobbyPlayerEvent;
 import forge.gui.interfaces.IGuiGame;
 import forge.localinstance.properties.ForgePreferences;
 import forge.model.FModel;
@@ -153,10 +152,10 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
 
     @Override
     protected void onMatchOver(final String matchId) {
-        // Scoped: only this match's players are affected
-        // Mark only the players in this match as not-ready
+        // Scoped: only this match's players are affected. In a tournament the
+        // controller's between-round standby owns the ready reset, so skip it here.
         final HostedMatch match = getMatch(matchId);
-        if (match != null && match.gameControllers != null) {
+        if (tournamentController == null && match != null && match.gameControllers != null) {
             for (LobbySlot slot : match.gameControllers.keySet()) {
                 if (slot != null) {
                     slot.setIsReady(false);
@@ -416,6 +415,15 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         tournamentController = new ServerTournamentController(this, event);
         tournamentController.startTournament();
         netLog.info("Tournament started — gamesPerMatch={}", gamesPerMatch);
+    }
+
+    /**
+     * Server-initiated ready change, routed through the same slot-update path a
+     * player's own click uses so the funnel refreshes the host's screen and
+     * broadcasts to remote clients.
+     */
+    public void setPlayerReady(int slotIndex, boolean ready) {
+        applyToSlot(slotIndex, UpdateLobbyPlayerEvent.isReadyUpdate(ready));
     }
 
     /**

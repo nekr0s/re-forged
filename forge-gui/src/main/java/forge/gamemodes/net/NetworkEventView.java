@@ -1,11 +1,7 @@
 package forge.gamemodes.net;
 
-import forge.localinstance.properties.ForgePreferences;
-import forge.model.FModel;
-
 import java.io.Serializable;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Immutable, serializable snapshot of a {@link NetworkEvent} for transmission to clients.
