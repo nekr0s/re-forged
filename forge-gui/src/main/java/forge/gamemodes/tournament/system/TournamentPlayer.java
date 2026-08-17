@@ -1,5 +1,6 @@
 package forge.gamemodes.tournament.system;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,7 +9,8 @@ import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
 import forge.LobbyPlayer;
 import forge.util.TextUtil;
 
-public class TournamentPlayer {
+public class TournamentPlayer implements Serializable {
+    private static final long serialVersionUID = 1L;
     private LobbyPlayer player;
     // Ties don't really happen with AI simulations, because there's no time limit
     private int wins = 0,
@@ -75,7 +77,7 @@ public class TournamentPlayer {
      * @param allPlayers all players in the tournament
      * @return OMW as a double (0.0 - 1.0), or 0.0 if no opponents played
      */
-    public double getOMW(java.util.List<TournamentPlayer> allPlayers) {
+    public double getOMW(List<TournamentPlayer> allPlayers) {
         if (previousOpponents.isEmpty()) {
             return 0.0;
         }
