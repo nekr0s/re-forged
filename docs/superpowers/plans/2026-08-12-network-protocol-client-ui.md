@@ -1,5 +1,11 @@
 # Network Protocol & Client UI Implementation Plan
 
+> **STATUS: EXECUTED — HISTORICAL.** The protocol and UI were built, but with important
+> differences: tournament state is **not** in `NetworkEventView` (removed for consistency),
+> clients hold a one-shot `TournamentRoundRobin` snapshot (see Gap 1), spectating is
+> server-complete but client-stubbed, and `ViewWinLose` currently routes all network limited
+> games to the tournament WinLose. See **`2026-08-16-tournament-current-state.md`**.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the network protocol messages, client-side event handling, and desktop UI that make tournaments playable over the network — tournament panel with standings/pairings, between-round standby display with ready/AFK timer, spectate UI, and tournament WinLose screen.

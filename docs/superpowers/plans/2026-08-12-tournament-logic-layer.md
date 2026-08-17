@@ -1,5 +1,9 @@
 # Tournament Logic Layer Implementation Plan
 
+> **STATUS: EXECUTED — HISTORICAL.** The server-side orchestration was built, but the final
+> design differs (poll-based completion detection, no AFK timer, host-controlled round starts,
+> `RoundState` split). See **`2026-08-16-tournament-current-state.md`** for the current state.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the server-side tournament orchestration that manages round-robin pairings, parallel match creation, between-round standby phases with AFK enforcement, and standings with OMW% tiebreakers.

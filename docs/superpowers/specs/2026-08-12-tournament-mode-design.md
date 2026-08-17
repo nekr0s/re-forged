@@ -1,5 +1,11 @@
 # Tournament Mode for Online Sealed/Draft Events
 
+> **STATUS: HISTORICAL — SUPERSEDED.** This was the original design. The implementation has
+> since diverged substantially through manual bug-fixing (poll-based completion detection,
+> host-controlled round starts, `RoundState` split from `EventPhase`, tournament state removed
+> from `NetworkEventView`, etc.). See **`2026-08-16-tournament-current-state.md`** for the
+> accurate current architecture and known gaps. Treat sections below as intent, not direction.
+
 ## Overview
 
 Add a Tournament Mode to Forge's online lobby system that transforms sealed/draft events from a single multiplayer free-for-all into a structured round-robin tournament with 1v1 matches, parallel match execution, spectating, standings with OMW% tiebreakers, and a standby phase between rounds.

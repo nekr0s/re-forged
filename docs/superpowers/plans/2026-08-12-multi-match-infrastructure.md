@@ -1,5 +1,9 @@
 # Multi-Match Infrastructure Implementation Plan
 
+> **STATUS: EXECUTED — HISTORICAL.** Multi-match infrastructure is in place (MatchRegistry,
+> match-scoped routing/cleanup, per-match client GUIs and codec trackers, network spectators).
+> See **`2026-08-16-tournament-current-state.md`** for the current state.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Enable the Forge server to run multiple concurrent matches with different player subsets, and allow remote clients to spectate ongoing matches — the foundation for tournament mode.

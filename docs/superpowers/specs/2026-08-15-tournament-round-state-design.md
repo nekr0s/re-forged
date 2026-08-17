@@ -1,5 +1,13 @@
 # Tournament & Round State Model
 
+> **STATUS: PARTIALLY SUPERSEDED.** The core idea (separate `RoundState` from `EventPhase`,
+> remove `ROUND_IN_PROGRESS`) was implemented — but the **"roundState on the wire via
+> `NetworkEventView`"** part was reverted on 2026-08-16 after causing inconsistent screens.
+> Today `NetworkEventView` carries no tournament fields; `RoundState` is tracked client-side
+> from the dedicated tournament events (`MatchStarted` → `ACTIVE`, `RoundComplete` →
+> `COMPLETE`). See **`2026-08-16-tournament-current-state.md`** for the accurate model and the
+> plan to move to a server-authoritative snapshot event.
+
 ## Overview
 
 Currently tournament and round lifecycle state is conflated into a single `EventPhase`
