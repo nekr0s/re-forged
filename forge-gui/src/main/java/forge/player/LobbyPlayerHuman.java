@@ -7,7 +7,10 @@ import forge.game.player.Player;
 import forge.game.player.PlayerController;
 import forge.util.GuiDisplayUtil;
 
-public class LobbyPlayerHuman extends LobbyPlayer implements IGameEntitiesFactory {
+import java.io.Serializable;
+
+public class LobbyPlayerHuman extends LobbyPlayer implements IGameEntitiesFactory, Serializable {
+    private static final long serialVersionUID = 1L;
     private final AutoYieldStore yieldStore = new AutoYieldStore();
 
     public AutoYieldStore getYieldStore() { return yieldStore; }
