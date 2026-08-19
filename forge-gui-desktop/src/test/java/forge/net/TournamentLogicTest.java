@@ -292,4 +292,44 @@ public class TournamentLogicTest {
         }
         Assert.assertTrue(nameFound, "Name matching should work across LobbyPlayer types (the fix)");
     }
+
+    /**
+     * Regression test for Bug 3: completing a match via
+     * {@link TournamentRoundRobin#reportMatchCompletion} must record opponent
+     * indices so OMW (the opponent-match-win tiebreaker) is non-zero. Previously
+     * only wins/losses were recorded, so standings always showed 0% OMW.
+     */
+    @Test
+    public void testReportMatchCompletionRecordsOpponentsForOMW() {
+        List<TournamentPlayer> players = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            players.add(new TournamentPlayer(new LobbyPlayerAi("P" + i, null), i));
+        }
+
+        TournamentRoundRobin rr = new TournamentRoundRobin(3, players);
+
+        for (TournamentPairing p : new ArrayList<>(rr.getActivePairings())) {
+            p.setWinner(p.getPairedPlayers().get(0));
+            rr.reportMatchCompletion(p);
+        }
+
+        // Every real player should have exactly one recorded opponent after round 1.
+        for (TournamentPlayer tp : players) {
+            Assert.assertEquals(tp.getPreviousOpponents().size(), 1,
+                    tp.getPlayer().getName() + " should have faced one opponent in round 1");
+        }
+
+        // OMW is the average win rate of the opponents faced. In round 1 every
+        // pairing produced one winner and one loser: a winner's opponent went 0-1
+        // (OMW 0.0), a loser's opponent went 1-0 (OMW 1.0). The key regression is
+        // that previousOpponents is now populated, so OMW is a real number rather
+        // than the old always-0.0.
+        List<TournamentPlayer> all = new ArrayList<>(players);
+        for (TournamentPlayer tp : players) {
+            double omw = tp.getOMW(all);
+            double expected = tp.getWins() > 0 ? 0.0 : 1.0;
+            Assert.assertEquals(omw, expected, 0.0001,
+                    tp.getPlayer().getName() + " OMW mismatch (got " + omw + ", expected " + expected + ")");
+        }
+    }
 }

@@ -95,6 +95,16 @@ final class GameClientHandler extends GameProtocolHandler<IGuiGame> implements I
                     if (gameView.getTracker() == null) {
                         updateTrackers(new Object[]{gameView});
                     }
+                    // Diagnostic for the tournament "first game shows 0-card deck" bug:
+                    // an active phase with an empty library means the deck wasn't loaded.
+                    if (gameView.getPhase() != null) {
+                        for (PlayerView pv : gameView.getPlayers()) {
+                            if (pv.getLibrary().isEmpty()) {
+                                netLog.info("[view] setGameView phase={}: player {} library EMPTY (hand={})",
+                                        gameView.getPhase(), pv.getName(), pv.getHand().size());
+                            }
+                        }
+                    }
                 }
                 break;
             case openView:

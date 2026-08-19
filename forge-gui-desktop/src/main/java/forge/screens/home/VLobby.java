@@ -24,7 +24,6 @@ import forge.gamemodes.match.LobbySlotType;
 import forge.gamemodes.net.*;
 import forge.gamemodes.net.server.ServerGameLobby;
 import forge.gamemodes.net.event.UpdateLobbyPlayerEvent;
-import forge.gamemodes.tournament.system.TournamentRoundRobin;
 import forge.gui.CardDetailPanel;
 import forge.gui.FThreads;
 import forge.gui.SwingPrefBinders;
@@ -50,7 +49,7 @@ import static java.util.Objects.requireNonNull;
  *
  * <br><br><i>(V at beginning of class name denotes a view class.)</i>
  */
-public class VLobby implements ILobbyView {
+public class VLobby implements ILobbyView, IHasForgeLog {
 
     static final int MAX_PLAYERS = 8;
     private static final int EVENT_BTN_WIDTH = 200;
@@ -594,6 +593,10 @@ public class VLobby implements ILobbyView {
     private void fireDeckChangeListener(final int index, final Deck deck) {
         decks[index] = deck;
         getPlayerPanel(index).refreshSleeveFromDeck(deck);
+        netLog.info("[deckUp] slot {} uploading deck '{}' main={} side={}",
+                index, deck == null ? "null" : deck.getName(),
+                deck == null || deck.getMain() == null ? -1 : deck.getMain().countAll(),
+                deck == null || deck.get(DeckSection.Sideboard) == null ? -1 : deck.get(DeckSection.Sideboard).countAll());
         if (playerChangeListener != null) {
             playerChangeListener.update(index, UpdateLobbyPlayerEvent.deckUpdate(deck));
         }
@@ -935,21 +938,20 @@ public class VLobby implements ILobbyView {
         tournamentPanel.setVisible(true);
         tournamentPanel.removeAll();
 
-        var tournament = controller.getTournament();
-        int round = tournament.getActiveRound();
-        int total = tournament.getTotalRounds();
+        int round = controller.getTournamentRound();
+        int total = controller.getTournamentTotalRounds();
         RoundState roundState = controller.getCurrentRoundState();
         lblTournamentTitle.setText("Tournament");
         if (roundState == RoundState.ACTIVE) {
             lblTournamentRound.setText("Round " + round + " of " + total + " in progress");
         } else if (roundState == RoundState.COMPLETE) {
-            lblTournamentRound.setText("Round " + (round - 1) + " complete — waiting for host to start round " + round);
+            lblTournamentRound.setText("Round " + round + " complete — waiting for host to start round " + (round + 1));
         } else {
             lblTournamentRound.setText("Round " + round + " of " + total);
         }
 
         StringBuilder standingsText = new StringBuilder("<html>");
-        var standings = buildStandingViews(tournament);
+        var standings = controller.getTournamentStandings();
         if (!standings.isEmpty()) {
             standingsText.append("<b>Standings:</b><br>");
             int rank = 1;
@@ -962,7 +964,7 @@ public class VLobby implements ILobbyView {
         lblTournamentStandings.setText(standingsText.toString());
 
         StringBuilder pairingsText = new StringBuilder("<html>");
-        var pairings = buildPairingViews(tournament);
+        var pairings = controller.getTournamentPairings();
         if (!pairings.isEmpty()) {
             pairingsText.append("<b>").append(roundState == RoundState.COMPLETE ? "Last Round:" : "Current Round:").append("</b><br>");
             for (var p : pairings) {
@@ -985,39 +987,6 @@ public class VLobby implements ILobbyView {
 
         tournamentPanel.revalidate();
         tournamentPanel.repaint();
-    }
-
-    private List<PairingView> buildPairingViews(TournamentRoundRobin tournament) {
-        List<PairingView> views = new ArrayList<>();
-        for (var pairing : tournament.getActivePairings()) {
-            var players = pairing.getPairedPlayers();
-            String playerA = !players.isEmpty() ? players.get(0).getPlayer().getName() : "?";
-            String playerB = players.size() > 1 ? players.get(1).getPlayer().getName() : "?";
-            String winner = pairing.getWinner() != null ? pairing.getWinner().getPlayer().getName() : null;
-            var status = pairing.isBye()
-                    ? PairingView.PairingStatus.BYE
-                    : (pairing.getWinner() != null
-                    ? PairingView.PairingStatus.COMPLETE
-                    : PairingView.PairingStatus.ONGOING);
-            views.add(new PairingView(playerA, playerB, null, status, winner));
-        }
-        return views;
-    }
-
-    private List<StandingView> buildStandingViews(TournamentRoundRobin tournament) {
-        List<StandingView> views = new ArrayList<>();
-        var sorted = new ArrayList<>(tournament.getAllPlayers());
-        sorted.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
-        for (var tp : sorted) {
-            views.add(new StandingView(
-                    tp.getPlayer().getName(),
-                    tp.getWins(),
-                    tp.getLosses(),
-                    tp.getByes(),
-                    tp.getScore(),
-                    tp.getOMWPercent(tournament.getAllPlayers())));
-        }
-        return views;
     }
 
     void showTournamentResults(List<StandingView> standings, boolean cancelled) {
@@ -1186,6 +1155,34 @@ public class VLobby implements ILobbyView {
                 }
             }
         }
+
+        // The sealed/draft pool and the built deck share the same name, so the by-name
+        // restore above never fires a new selection event and the built deck would never
+        // be re-uploaded — the server keeps the raw pool (main=0). Re-push the built deck
+        // whenever the selected event deck has a populated Main and differs from the last
+        // one we uploaded. Content-based compare keeps this quiet on unrelated refreshes.
+        final Deck selectedDeck = chooser.getDeck();
+        final Deck lastUploaded = decks[playerWithFocus];
+        if (selectedDeck != null && hasMainDeck(selectedDeck)
+                && !sameDeckForUpload(selectedDeck, lastUploaded)) {
+            fireDeckChangeListener(playerWithFocus, selectedDeck);
+        }
+    }
+
+    private static boolean hasMainDeck(final Deck deck) {
+        return deck.getMain() != null && !deck.getMain().isEmpty();
+    }
+
+    private static boolean sameDeckForUpload(final Deck a, final Deck b) {
+        if (a == b) {
+            return true;
+        }
+        if (b == null || !a.getName().equals(b.getName())) {
+            return false;
+        }
+        final int aMain = a.getMain() == null ? 0 : a.getMain().countAll();
+        final int bMain = b.getMain() == null ? 0 : b.getMain().countAll();
+        return aMain == bMain;
     }
 
     /** Saves avatar prefs for players one and two. */

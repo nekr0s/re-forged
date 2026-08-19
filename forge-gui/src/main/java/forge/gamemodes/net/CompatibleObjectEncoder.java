@@ -12,8 +12,6 @@ import net.jpountz.lz4.LZ4BlockOutputStream;
 
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Netty outbound handler that frames and serializes one network message per
@@ -37,9 +35,6 @@ public class CompatibleObjectEncoder extends MessageToByteEncoder<Serializable> 
      */
     private volatile int consumerId = -1;
 
-    private final Map<String, Tracker> matchTrackers = new ConcurrentHashMap<>();
-    private final Map<String, Integer> matchConsumerIds = new ConcurrentHashMap<>();
-
     public CompatibleObjectEncoder(NetworkByteTracker byteTracker) {
         this.byteTracker = byteTracker;
     }
@@ -52,44 +47,16 @@ public class CompatibleObjectEncoder extends MessageToByteEncoder<Serializable> 
         this.consumerId = consumerId;
     }
 
-    public void setTracker(String matchId, Tracker tracker, int consumerId) {
-        matchTrackers.put(matchId, tracker);
-        matchConsumerIds.put(matchId, consumerId);
-    }
-
-    public void removeTracker(String matchId) {
-        matchTrackers.remove(matchId);
-        matchConsumerIds.remove(matchId);
-    }
-
     @Override
     protected void encode(ChannelHandlerContext ctx, Serializable msg, ByteBuf out) throws Exception {
-        Tracker effectiveTracker = tracker;
-        int effectiveConsumerId = consumerId;
-        if (msg instanceof GuiGameEvent gge && gge.getMatchId() != null) {
-            Tracker matchTracker = matchTrackers.get(gge.getMatchId());
-            if (matchTracker != null) {
-                effectiveTracker = matchTracker;
-                effectiveConsumerId = matchConsumerIds.getOrDefault(gge.getMatchId(), -1);
-            }
-        }
-        encodeInto(msg, out, effectiveTracker, effectiveConsumerId, byteTracker);
+        encodeInto(msg, out, tracker, consumerId, byteTracker);
     }
 
     /** Caller passes the returned buffer to writeAndFlush, which takes ownership. */
     public ByteBuf encodeToBuf(Serializable msg, ByteBufAllocator alloc) throws Exception {
-        Tracker effectiveTracker = tracker;
-        int effectiveConsumerId = consumerId;
-        if (msg instanceof GuiGameEvent gge && gge.getMatchId() != null) {
-            Tracker matchTracker = matchTrackers.get(gge.getMatchId());
-            if (matchTracker != null) {
-                effectiveTracker = matchTracker;
-                effectiveConsumerId = matchConsumerIds.getOrDefault(gge.getMatchId(), -1);
-            }
-        }
         ByteBuf out = alloc.buffer();
         try {
-            encodeInto(msg, out, effectiveTracker, effectiveConsumerId, byteTracker);
+            encodeInto(msg, out, tracker, consumerId, byteTracker);
         } catch (Exception e) {
             out.release();
             throw e;

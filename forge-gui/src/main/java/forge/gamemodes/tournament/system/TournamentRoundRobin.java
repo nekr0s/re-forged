@@ -81,7 +81,14 @@ public class TournamentRoundRobin extends AbstractTournament {
         finishMatch(pairing);
 
         if (!pairing.isBye()) {
-            for (TournamentPlayer tp : pairing.getPairedPlayers()) {
+            // Record that each player faced the other, so OMW (the opponent-match-win
+            // tiebreaker) has data. Byes (single-player pairings) don't count.
+            List<TournamentPlayer> paired = pairing.getPairedPlayers();
+            if (paired.size() >= 2) {
+                paired.get(0).addOpponentIndex(paired.get(1).getIndex());
+                paired.get(1).addOpponentIndex(paired.get(0).getIndex());
+            }
+            for (TournamentPlayer tp : paired) {
                 if (!tp.equals(pairing.getWinner())) {
                     tp.addLoss();
                 } else {

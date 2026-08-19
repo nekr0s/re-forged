@@ -112,13 +112,13 @@ loop back through the network channel).
 
 ### Gap 1 — Remote clients never receive the tournament state (confirmed root cause of "panel missing on clients")
 
-`TournamentStartEvent` carries the whole `TournamentRoundRobin`. On the **host** this is the
-*same live object* (in-process broadcast via `dispatchToLocalListener`), so the host's panel
-works. On **remote clients** the event must be Java-serialized — and it **cannot be**:
-`TournamentPlayer` and `TournamentPairing` do **not** implement `Serializable`
-(`public class TournamentPlayer {`), so `RemoteClient.send` throws `NotSerializableException`
-inside `encodeOnCallingThread`, logs "Network encode error", and **silently drops the event**.
-The connection survives.
+> **Status: RESOLVED 2026-08-19.** `TournamentStartEvent` no longer ships the engine object.
+> The controller now broadcasts a wire-safe `TournamentUpdateEvent(eventId, round,
+> totalRounds, RoundState, List<PairingView>, List<StandingView>)` from every transition
+> (round start, match complete, standby, next round, finish/cancel) and clients replace
+> their snapshot wholesale. `TournamentStartEvent` shrank to `(eventId, playerNames,
+> totalRounds)`. The "make the engine classes `Serializable`" whack-a-mole was reverted.
+> History (why this mattered):
 
 Consequences:
 - Remote clients never receive `onTournamentStart` → `CLobby.tournament` stays `null` →
@@ -448,10 +448,11 @@ host-refresh half vs. the tournament's network-only half — is the entire bug.
 
 ## Recommended Next Steps (priority order)
 
-1. **Gap 1** — server-authoritative `TournamentUpdateEvent` snapshot; delete client-side
-   re-derivation and the engine object on the wire (which can't even be serialized today).
-   This fixes the missing panel on clients and the recurring "inconsistent screens" bug at
-   the root.
+1. ~~**Gap 1** — server-authoritative `TournamentUpdateEvent` snapshot; delete client-side
+   re-derivation and the engine object on the wire.~~ **Done 2026-08-19.** The update event is
+   broadcast on every transition; `TournamentStartEvent` is a wire-safe summary; client
+   re-derivation (`buildPairingViews`/`buildStandingViews`) and the Serializable whack-a-mole
+   were removed. Add a headless end-to-end test (Gap 9) to pin the flow.
 2. **Gap 11** — route server-initiated ready writes through the `applyToSlot`/`updateView`
    funnel (fixes the host's stale ready checkbox).
 3. **Gap 12** — rebuild the legacy ready/deck/legality start gate + failure feedback in

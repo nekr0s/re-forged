@@ -408,7 +408,23 @@ public final class CMatchUI
 
         int i = 0;
         for (final PlayerView p : sortedPlayers) {
-            if (allHands || isLocalPlayer(p) || CardView.mayViewAny(p.getHand(), localPlayers)) {
+            final boolean shown = allHands || isLocalPlayer(p) || CardView.mayViewAny(p.getHand(), localPlayers);
+            if (!allHands && !isLocalPlayer(p) && shown) {
+                // Diagnostic: a non-local player's hand became visible to a local player.
+                // Log which card and why, so we can tell a server mayLook leak (H1) from a
+                // stale client-side CardView (H2). See CardView.canBeShownTo.
+                for (final CardView cv : p.getHand()) {
+                    for (final PlayerView viewer : localPlayers) {
+                        if (cv.canBeShownTo(viewer)) {
+                            netLog.info("[mayView] hand of {} shown to local {}: card={} zone={} faceDown={} owner={} ctrl={} mayPlayerLook={} viewerMindSlave={}",
+                                    p, viewer, cv, cv.getZone(), cv.isFaceDown(),
+                                    cv.getOwner(), cv.getController(), cv.mayPlayerLook(viewer),
+                                    viewer.getMindSlaveMaster());
+                        }
+                    }
+                }
+            }
+            if (shown) {
                 final EDocID doc = EDocID.Hands[i];
                 final VHand newHand = new VHand(this, doc, p);
                 newHand.getLayoutControl().initialize();

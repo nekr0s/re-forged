@@ -2,6 +2,7 @@ package forge.gamemodes.net.client;
 
 import com.google.common.collect.Lists;
 import forge.game.player.PlayerView;
+import forge.gamemodes.match.AbstractGuiGame;
 import forge.gamemodes.net.CompatibleObjectDecoder;
 import forge.gamemodes.net.CompatibleObjectEncoder;
 import forge.gamemodes.net.NetworkLogConfig;
@@ -171,6 +172,14 @@ public class FGameClient implements IToServer, IHasForgeLog {
     }
 
     void setGameControllers(final Iterable<PlayerView> myPlayers) {
+        // The client shares one IGuiGame for the whole session, and PlayerView ids are the
+        // in-game seat index (0/1). Without clearing, a round-robin seat rotation (1 → 0)
+        // would leave the previous match's seat registered alongside the current one —
+        // CMatchUI then computes allHands == true and shows an opponent's hand tab. Reset
+        // the previous match's controller bookkeeping before registering this match's seats.
+        if (clientGui instanceof AbstractGuiGame agg) {
+            agg.resetForNewMatch();
+        }
         for (final PlayerView p : myPlayers) {
             NetGameController controller = new NetGameController(this);
             clientGui.setOriginalGameController(p, controller);

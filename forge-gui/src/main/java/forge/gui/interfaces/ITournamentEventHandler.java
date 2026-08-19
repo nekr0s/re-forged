@@ -4,6 +4,7 @@ import forge.gamemodes.net.event.*;
 
 public interface ITournamentEventHandler extends INetEventHandler {
     abstract void onTournamentStart(TournamentStartEvent event);
+    abstract void onTournamentUpdate(TournamentUpdateEvent event);
     abstract void onMatchStarted(MatchStartedEvent event);
     abstract void onMatchComplete(MatchCompleteEvent event);
     abstract void onRoundComplete(RoundCompleteEvent event);
@@ -16,6 +17,9 @@ public interface ITournamentEventHandler extends INetEventHandler {
     default boolean dispatch(NetEvent event) {
         if (event instanceof TournamentStartEvent e) {
             onTournamentStart(e);
+            return true;
+        } else if (event instanceof TournamentUpdateEvent e) {
+            onTournamentUpdate(e);
             return true;
         } else if (event instanceof MatchStartedEvent e) {
             onMatchStarted(e);

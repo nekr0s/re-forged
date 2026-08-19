@@ -17,6 +17,7 @@ import forge.gamemodes.net.EventParticipant;
 import forge.gamemodes.net.EventPhase;
 import forge.gamemodes.net.NetworkEvent;
 import forge.gamemodes.net.event.DraftPickEvent;
+import forge.gamemodes.net.event.MessageEvent;
 import forge.gamemodes.net.event.NetEvent;
 import forge.gamemodes.net.event.ReceiveEventPoolEvent;
 import forge.gamemodes.net.event.UpdateLobbyPlayerEvent;
@@ -392,6 +393,15 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
             }
             if (slot != null && slot.getDeck() == null) {
                 netLog.warn("Cannot start tournament: {} has no deck", p.getName());
+                FServerManager.getInstance().broadcast(new MessageEvent(
+                        "Cannot start tournament: " + p.getName() + " has no deck."));
+                return;
+            }
+            if (slot != null && slot.getDeck() != null
+                    && (slot.getDeck().getMain() == null || slot.getDeck().getMain().isEmpty())) {
+                netLog.warn("Cannot start tournament: {} has an empty deck (pool not built into Main)", p.getName());
+                FServerManager.getInstance().broadcast(new MessageEvent(
+                        "Cannot start tournament: " + p.getName() + " has not finished building their deck."));
                 return;
             }
         }

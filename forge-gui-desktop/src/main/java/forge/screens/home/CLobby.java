@@ -19,7 +19,6 @@ import forge.gamemodes.net.*;
 import forge.gamemodes.net.client.FGameClient;
 import forge.gamemodes.net.event.*;
 import forge.gamemodes.net.server.ServerGameLobby;
-import forge.gamemodes.tournament.system.TournamentRoundRobin;
 import forge.gui.FDraftOverlay;
 import forge.gui.GuiChoose;
 import forge.gui.interfaces.IDraftEventHandler;
@@ -72,9 +71,13 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
     private int lastPackNumber;
     private CEditorNetworkDraft networkDraftEditor;
 
-    // Tournament state
-    private TournamentRoundRobin tournament;
+    // Tournament state (server-authoritative snapshot from TournamentUpdateEvent)
+    private boolean inTournament = false;
+    private int tournamentRound = 0;
+    private int tournamentTotalRounds = 0;
     private RoundState currentRoundState = RoundState.NONE;
+    private List<PairingView> tournamentPairings = List.of();
+    private List<StandingView> tournamentStandings = List.of();
 
     public CLobby(final VLobby view) {
         this.view = view;
@@ -553,9 +556,12 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
         return IDraftEventHandler.super.dispatch(event) || ITournamentEventHandler.super.dispatch(event);
     }
 
-    public boolean isInTournament() { return getTournament() != null; }
-    public TournamentRoundRobin getTournament() { return this.tournament; }
+    public boolean isInTournament() { return inTournament; }
+    public int getTournamentRound() { return tournamentRound; }
+    public int getTournamentTotalRounds() { return tournamentTotalRounds; }
     public RoundState getCurrentRoundState() { return currentRoundState; }
+    public List<PairingView> getTournamentPairings() { return tournamentPairings; }
+    public List<StandingView> getTournamentStandings() { return tournamentStandings; }
 
     void requestSpectate(String matchId) {
         FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
@@ -567,11 +573,22 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
     @Override
     public void onTournamentStart(TournamentStartEvent event) {
         clearTournamentData();
-        this.tournament = event.getTournament();
+        inTournament = true;
+        tournamentTotalRounds = event.getTotalRounds();
         SwingUtilities.invokeLater(() -> {
             view.updateActionButtons();
             view.updateRightPanelForMode();
         });
+    }
+
+    @Override
+    public void onTournamentUpdate(TournamentUpdateEvent event) {
+        tournamentRound = event.getRound();
+        tournamentTotalRounds = event.getTotalRounds();
+        currentRoundState = event.getRoundState();
+        tournamentPairings = event.getPairings();
+        tournamentStandings = event.getStandings();
+        SwingUtilities.invokeLater(view::updateRightPanelForMode);
     }
 
     @Override
@@ -631,7 +648,11 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
     }
 
     private void clearTournamentData() {
-        this.tournament = null;
+        inTournament = false;
+        tournamentRound = 0;
+        tournamentTotalRounds = 0;
         currentRoundState = RoundState.NONE;
+        tournamentPairings = List.of();
+        tournamentStandings = List.of();
     }
 }

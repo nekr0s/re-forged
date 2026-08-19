@@ -2,6 +2,8 @@ package forge.gamemodes.net.server;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
+import forge.deck.Deck;
+import forge.deck.DeckSection;
 import forge.game.Game;
 import forge.game.GameLogEntry;
 import forge.game.GameView;
@@ -578,6 +580,14 @@ public final class FServerManager implements IHasForgeLog {
 
     public void updateSlot(final int index, final UpdateLobbyPlayerEvent event) {
         localLobby.applyToSlot(index, event);
+
+        if (event.getDeck() != null) {
+            final Deck d = event.getDeck();
+            netLog.info("[deckRecv] slot {} received deck '{}' main={} side={}",
+                    index, d.getName(),
+                    d.getMain() == null ? -1 : d.getMain().countAll(),
+                    d.get(DeckSection.Sideboard) == null ? -1 : d.get(DeckSection.Sideboard).countAll());
+        }
 
         if (event.getReady() != null) {
             broadcastReadyState(localLobby.getSlot(index).getName(), event.getReady());

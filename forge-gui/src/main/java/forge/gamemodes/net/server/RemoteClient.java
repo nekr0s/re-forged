@@ -28,8 +28,6 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
     private final Map<String, ReplyPool> matchReplies = new ConcurrentHashMap<>();
     private volatile Tracker defaultCodecTracker;
     private volatile int defaultCodecConsumerId = -1;
-    private final Map<String, Tracker> matchCodecTrackers = new ConcurrentHashMap<>();
-    private final Map<String, Integer> matchCodecConsumerIds = new ConcurrentHashMap<>();
     private final AtomicInteger sendErrors = new AtomicInteger(0);
     private final Map<String, RemoteClientGuiGame> matchGuis = new ConcurrentHashMap<>();
     private volatile String activeMatchId;
@@ -212,12 +210,6 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
     public void removeMatchGui(final String matchId) {
         matchGuis.remove(matchId);
         matchReplies.remove(matchId);
-        matchCodecTrackers.remove(matchId);
-        matchCodecConsumerIds.remove(matchId);
-        CompatibleObjectEncoder encoder = channel.pipeline().get(CompatibleObjectEncoder.class);
-        if (encoder != null) {
-            encoder.removeTracker(matchId);
-        }
         if (activeMatchId != null && activeMatchId.equals(matchId)) {
             activeMatchId = matchGuis.isEmpty() ? null : matchGuis.keySet().iterator().next();
         }
@@ -226,8 +218,6 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
     public void clearAllMatchGuis() {
         matchGuis.clear();
         matchReplies.clear();
-        matchCodecTrackers.clear();
-        matchCodecConsumerIds.clear();
         activeMatchId = null;
     }
 
@@ -261,19 +251,6 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         applyCodecTracker(channel);
     }
 
-    public void setCodecTracker(String matchId, Tracker tracker, int consumerId) {
-        if (matchId == null) {
-            setCodecTracker(tracker, consumerId);
-            return;
-        }
-        matchCodecTrackers.put(matchId, tracker);
-        matchCodecConsumerIds.put(matchId, consumerId);
-        CompatibleObjectEncoder encoder = channel.pipeline().get(CompatibleObjectEncoder.class);
-        if (encoder != null) {
-            encoder.setTracker(matchId, tracker, consumerId);
-        }
-    }
-
     private void applyCodecTracker(Channel ch) {
         if (defaultCodecTracker == null || ch == null) {
             return;
@@ -295,18 +272,12 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         }
     }
 
-    public Tracker getCodecTracker(String matchId) {
-        if (matchId == null) {
-            return defaultCodecTracker;
-        }
-        return matchCodecTrackers.getOrDefault(matchId, defaultCodecTracker);
+    public Tracker getCodecTracker() {
+        return defaultCodecTracker;
     }
 
-    public int getCodecConsumerId(String matchId) {
-        if (matchId == null) {
-            return defaultCodecConsumerId;
-        }
-        return matchCodecConsumerIds.getOrDefault(matchId, defaultCodecConsumerId);
+    public int getCodecConsumerId() {
+        return defaultCodecConsumerId;
     }
 
     public int getSendErrorCount() {

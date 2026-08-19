@@ -1,6 +1,5 @@
 package forge.gamemodes.tournament.system;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -16,7 +15,7 @@ import forge.util.MyRandom;
 import forge.util.TextUtil;
 
 @SuppressWarnings("serial")
-public abstract class AbstractTournament implements Serializable {
+public abstract class AbstractTournament {
     protected int activeRound;
     protected int totalRounds;
     protected int playersInPairing = 2;

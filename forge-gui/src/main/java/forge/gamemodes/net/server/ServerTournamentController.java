@@ -3,6 +3,7 @@ package forge.gamemodes.net.server;
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
 import forge.deck.Deck;
+import forge.deck.DeckSection;
 import forge.game.GameType;
 import forge.game.player.RegisteredPlayer;
 import forge.gamemodes.match.HostedMatch;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class ServerTournamentController implements IHasForgeLog {
     private static final long POLL_INTERVAL_MS = 500L;
@@ -33,6 +35,7 @@ public class ServerTournamentController implements IHasForgeLog {
 
     private final Map<String, HostedMatch> trackedMatches = new ConcurrentHashMap<>();
     private final Map<String, TournamentPairing> matchToPairing = new ConcurrentHashMap<>();
+    private final Map<TournamentPairing, String> pairingToMatchId = new ConcurrentHashMap<>();
     private ScheduledFuture<?> pollTask;
     private boolean inStandby = false;
 
@@ -66,12 +69,23 @@ public class ServerTournamentController implements IHasForgeLog {
     public synchronized void startTournament() {
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
         netLog.info("[Tournament] Tournament started — round 1 of {}", tournament.getTotalRounds());
-        lobby.broadcastTournamentEvent(new TournamentStartEvent(event.getEventId(), getTournament()));
+        List<String> playerNames = event.getParticipants().stream()
+                .map(EventParticipant::getName).collect(Collectors.toList());
+        lobby.broadcastTournamentEvent(new TournamentStartEvent(event.getEventId(), playerNames, tournament.getTotalRounds()));
         startRoundMatches();
         server.updateLobbyState();
     }
 
     private synchronized void startRoundMatches() {
+        startRoundMatchesInternal();
+        if (tournament.isTournamentOver()) {
+            // onTournamentComplete already broadcast the final standings
+        } else {
+            broadcastUpdate(RoundState.ACTIVE);
+        }
+    }
+
+    private void startRoundMatchesInternal() {
         netLog.info("[Tournament] Starting round {} matches", tournament.getActiveRound());
         for (TournamentPairing pairing : new ArrayList<>(tournament.getActivePairings())) {
             if (pairing.isBye()) {
@@ -85,7 +99,7 @@ public class ServerTournamentController implements IHasForgeLog {
             if (tournament.isTournamentOver()) {
                 onTournamentComplete();
             } else {
-                startRoundMatches();
+                startRoundMatchesInternal();
             }
         } else {
             startPolling();
@@ -116,10 +130,18 @@ public class ServerTournamentController implements IHasForgeLog {
             LobbySlot slot = lobby.getSlot(ep.getLobbySlotIndex());
             if (slot == null) continue;
 
-            Deck deck = ep.getDeck();
+            // The slot is the single source of truth for the deck. AI participants carry
+            // their auto-built deck on the participant; humans uploaded theirs to the slot
+            // during deck selection. Either way, make sure the slot has it before the match.
+            Deck deck = ep.getDeck() != null ? ep.getDeck() : slot.getDeck();
             if (deck != null) {
                 slot.setDeck(deck);
             }
+            netLog.info("[Tournament] Pairing deck for slot {} ({}) — deck='{}' main={} side={}",
+                    ep.getLobbySlotIndex(), ep.getName(),
+                    deck == null ? "null" : deck.getName(),
+                    deck == null || deck.getMain() == null ? -1 : deck.getMain().countAll(),
+                    deck == null || deck.get(DeckSection.Sideboard) == null ? -1 : deck.get(DeckSection.Sideboard).countAll());
             slotIndices.add(ep.getLobbySlotIndex());
         }
 
@@ -147,6 +169,7 @@ public class ServerTournamentController implements IHasForgeLog {
             String matchId = match.getMatchId();
             trackedMatches.put(matchId, match);
             matchToPairing.put(matchId, pairing);
+            pairingToMatchId.put(pairing, matchId);
 
             netLog.info("[Tournament] Match started — matchId={}, round={}", matchId, tournament.getActiveRound());
 
@@ -229,6 +252,7 @@ public class ServerTournamentController implements IHasForgeLog {
                 }
                 trackedMatches.remove(matchId);
                 matchToPairing.remove(matchId);
+                pairingToMatchId.remove(pairing);
                 anyCompleted = true;
             }
         }
@@ -283,35 +307,33 @@ public class ServerTournamentController implements IHasForgeLog {
     private void onTournamentComplete() {
         event.setPhase(EventPhase.TOURNAMENT_COMPLETE);
 
-        List<TournamentPlayer> ranked = new ArrayList<>(tournament.getAllPlayers());
-        ranked.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
+        List<StandingView> finalStandings = buildStandings();
 
         StringBuilder results = new StringBuilder("Tournament complete! Final standings:\n");
         int rank = 1;
-        for (TournamentPlayer tp : ranked) {
+        for (StandingView s : finalStandings) {
             results.append(rank++).append(". ")
-                    .append(tp.getPlayer().getName())
+                    .append(s.playerName())
                     .append(" — ")
-                    .append(tp.getScore())
+                    .append(s.score())
                     .append(" pts\n");
         }
 
-        netLog.info("[Tournament] Tournament complete — {} players ranked", ranked.size());
-        for (TournamentPlayer tp : ranked) {
+        netLog.info("[Tournament] Tournament complete — {} players ranked", finalStandings.size());
+        for (StandingView s : finalStandings) {
             netLog.info("[Tournament]   {} — W:{} L:{} B:{} Score:{} OMW:{}",
-                    tp.getPlayer().getName(), tp.getWins(), tp.getLosses(),
-                    tp.getByes(), tp.getScore(), tp.getOMWPercent(tournament.getAllPlayers()));
+                    s.playerName(), s.wins(), s.losses(), s.byes(), s.score(), s.omwPercent());
         }
 
         server.broadcast(new MessageEvent(results.toString()));
 
-        List<StandingView> finalStandings = buildFinalStandings();
         lobby.broadcastTournamentEvent(new TournamentCompleteEvent(finalStandings, false));
+        broadcastUpdate(RoundState.NONE);
 
         server.updateLobbyState();
     }
 
-    private java.util.List<StandingView> buildFinalStandings() {
+    private List<StandingView> buildStandings() {
         List<TournamentPlayer> ranked = new ArrayList<>(tournament.getAllPlayers());
         ranked.sort((a, b) -> {
             int scoreCmp = Integer.compare(b.getScore(), a.getScore());
@@ -331,6 +353,44 @@ public class ServerTournamentController implements IHasForgeLog {
         return views;
     }
 
+    private List<PairingView> buildPairings(RoundState state) {
+        List<PairingView> views = new ArrayList<>();
+        if (state == RoundState.COMPLETE) {
+            int finishedRound = tournament.getActiveRound() - 1;
+            for (TournamentPairing pairing : tournament.getCompletedPairings()) {
+                if (pairing.getRound() != finishedRound) continue;
+                views.add(toPairingView(pairing));
+            }
+        } else {
+            for (TournamentPairing pairing : tournament.getActivePairings()) {
+                views.add(toPairingView(pairing));
+            }
+        }
+        return views;
+    }
+
+    private PairingView toPairingView(TournamentPairing pairing) {
+        List<TournamentPlayer> players = pairing.getPairedPlayers();
+        String playerA = !players.isEmpty() ? players.get(0).getPlayer().getName() : "?";
+        String playerB = players.size() > 1 ? players.get(1).getPlayer().getName() : "?";
+        String winner = pairing.getWinner() != null ? pairing.getWinner().getPlayer().getName() : null;
+        PairingView.PairingStatus status = pairing.isBye()
+                ? PairingView.PairingStatus.BYE
+                : (winner != null ? PairingView.PairingStatus.COMPLETE : PairingView.PairingStatus.ONGOING);
+        String matchId = pairingToMatchId.get(pairing);
+        return new PairingView(playerA, playerB, matchId, status, winner);
+    }
+
+    private void broadcastUpdate(RoundState state) {
+        int round = state == RoundState.COMPLETE ? tournament.getActiveRound() - 1 : tournament.getActiveRound();
+        if (round < 1) {
+            round = tournament.getActiveRound();
+        }
+        lobby.broadcastTournamentEvent(new TournamentUpdateEvent(
+                event.getEventId(), round, tournament.getTotalRounds(), state,
+                buildPairings(state), buildStandings()));
+    }
+
     public void shutdown() {
         netLog.info("[Tournament] Tournament shutdown — cancelling with {} active matches", trackedMatches.size());
         stopPolling();
@@ -342,8 +402,9 @@ public class ServerTournamentController implements IHasForgeLog {
         }
         trackedMatches.clear();
         matchToPairing.clear();
+        pairingToMatchId.clear();
 
-        lobby.broadcastTournamentEvent(new TournamentCompleteEvent(buildFinalStandings(), true));
+        lobby.broadcastTournamentEvent(new TournamentCompleteEvent(buildStandings(), true));
     }
 
     private void enterBetweenRoundStandby() {
@@ -374,6 +435,7 @@ public class ServerTournamentController implements IHasForgeLog {
 
         int completedRound = tournament.getActiveRound() - 1;
         netLog.info("[Tournament] Entering between-round standby — waiting for host to start the next round");
+        broadcastUpdate(RoundState.COMPLETE);
         server.broadcast(new MessageEvent(
                 "Round " + completedRound + " complete. All players, click Ready. The host will start the next round."));
     }
