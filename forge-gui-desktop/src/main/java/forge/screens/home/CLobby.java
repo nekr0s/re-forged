@@ -1,12 +1,6 @@
 package forge.screens.home;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Vector;
+import java.util.*;
 import java.util.function.Consumer;
 
 import javax.swing.JPanel;
@@ -21,17 +15,15 @@ import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
 import forge.gamemodes.match.GameLobby;
 import forge.gamemodes.match.LobbySlot;
-import forge.gamemodes.net.EventFormat;
-import forge.gamemodes.net.EventParticipant;
-import forge.gamemodes.net.NetworkEvent;
-import forge.gamemodes.net.NetworkEventView;
+import forge.gamemodes.net.*;
 import forge.gamemodes.net.client.FGameClient;
-import forge.gamemodes.net.event.DraftPickEvent;
+import forge.gamemodes.net.event.*;
 import forge.gamemodes.net.server.ServerGameLobby;
 import forge.gui.FDraftOverlay;
 import forge.gui.GuiChoose;
 import forge.gui.interfaces.IDraftEventHandler;
 import forge.gui.framework.FScreen;
+import forge.gui.interfaces.ITournamentEventHandler;
 import forge.gui.util.SOptionPane;
 import forge.item.PaperCard;
 import forge.localinstance.properties.ForgePreferences;
@@ -50,7 +42,7 @@ import forge.toolbox.FTextField;
 import forge.util.Localizer;
 import net.miginfocom.swing.MigLayout;
 
-public class CLobby implements IDraftEventHandler {
+public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
 
     public enum LobbyMode { CONSTRUCTED, LIMITED }
 
@@ -78,6 +70,14 @@ public class CLobby implements IDraftEventHandler {
     private int mySeatIndex;
     private int lastPackNumber;
     private CEditorNetworkDraft networkDraftEditor;
+
+    // Tournament state (server-authoritative snapshot from TournamentUpdateEvent)
+    private boolean inTournament = false;
+    private int tournamentRound = 0;
+    private int tournamentTotalRounds = 0;
+    private RoundState currentRoundState = RoundState.NONE;
+    private List<PairingView> tournamentPairings = List.of();
+    private List<StandingView> tournamentStandings = List.of();
 
     public CLobby(final VLobby view) {
         this.view = view;
@@ -196,7 +196,7 @@ public class CLobby implements IDraftEventHandler {
         }
         String newEventId = data.getActiveEventId();
         boolean newConformance = data.isActiveConformance();
-        if (!java.util.Objects.equals(newEventId, activeEventId) || newConformance != activeConformance) {
+        if (!Objects.equals(newEventId, activeEventId) || newConformance != activeConformance) {
             activeEventId = newEventId;
             activeConformance = newConformance;
             if (!view.getLobby().hasControl()) {
@@ -208,6 +208,7 @@ public class CLobby implements IDraftEventHandler {
         if (eventPanelNeedsUpdate) {
             refreshEventPanel();
         }
+        view.updateActionButtons();
     }
 
     /** Compute the event panel contents and push to the view. */
@@ -447,7 +448,7 @@ public class CLobby implements IDraftEventHandler {
         }
         if (lastEventView != null) {
             List<EventParticipant> participants = lastEventView.getParticipants();
-            int totalPacks = lastEventView.getNumRounds();
+            int totalPacks = lastEventView.getNumDraftRounds();
             String[] names = new String[participants.size()];
             boolean[] aiFlags = new boolean[participants.size()];
             for (EventParticipant p : participants) {
@@ -549,6 +550,79 @@ public class CLobby implements IDraftEventHandler {
         });
     }
 
+    // TODO: This is a hack. Think of a better way to handle this.
+    @Override
+    public boolean dispatch(NetEvent event) {
+        return IDraftEventHandler.super.dispatch(event) || ITournamentEventHandler.super.dispatch(event);
+    }
+
+    public boolean isInTournament() { return inTournament; }
+    public int getTournamentRound() { return tournamentRound; }
+    public int getTournamentTotalRounds() { return tournamentTotalRounds; }
+    public RoundState getCurrentRoundState() { return currentRoundState; }
+    public List<PairingView> getTournamentPairings() { return tournamentPairings; }
+    public List<StandingView> getTournamentStandings() { return tournamentStandings; }
+
+    void requestSpectate(String matchId) {
+        FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
+        if (client != null) {
+            client.send(new SpectateRequestEvent(matchId));
+        }
+    }
+
+    @Override
+    public void onTournamentStart(TournamentStartEvent event) {
+        clearTournamentData();
+        inTournament = true;
+        tournamentTotalRounds = event.getTotalRounds();
+        SwingUtilities.invokeLater(() -> {
+            view.updateActionButtons();
+            view.updateRightPanelForMode();
+        });
+    }
+
+    @Override
+    public void onTournamentUpdate(TournamentUpdateEvent event) {
+        tournamentRound = event.getRound();
+        tournamentTotalRounds = event.getTotalRounds();
+        currentRoundState = event.getRoundState();
+        tournamentPairings = event.getPairings();
+        tournamentStandings = event.getStandings();
+        SwingUtilities.invokeLater(view::updateRightPanelForMode);
+    }
+
+    @Override
+    public void onMatchStarted(MatchStartedEvent event) {
+        currentRoundState = RoundState.ACTIVE;
+        SwingUtilities.invokeLater(view::updateRightPanelForMode);
+    }
+
+    @Override
+    public void onMatchComplete(MatchCompleteEvent event) {
+        SwingUtilities.invokeLater(view::updateRightPanelForMode);
+    }
+
+    @Override
+    public void onRoundComplete(RoundCompleteEvent event) {
+        currentRoundState = RoundState.COMPLETE;
+        SwingUtilities.invokeLater(view::updateRightPanelForMode);
+    }
+
+    @Override
+    public void onTournamentComplete(TournamentCompleteEvent event) {
+        clearTournamentData();
+        SwingUtilities.invokeLater(() -> {
+            view.showTournamentResults(event.getFinalStandings(), event.isCancelled());
+            view.updateActionButtons();
+            view.updateRightPanelForMode();
+        });
+    }
+
+    @Override
+    public void onSpectateApproved(SpectateApprovedEvent event) {
+        SwingUtilities.invokeLater(() -> view.showSpectateView(event.getMatchId()));
+    }
+
     public void initialize() {
         final ForgePreferences prefs = FModel.getPreferences();
         // Checkbox event handling
@@ -571,5 +645,14 @@ public class CLobby implements IDraftEventHandler {
         // Pre-select checkboxes
         view.getCbSingletons().setSelected(prefs.getPrefBoolean(FPref.DECKGEN_SINGLETONS));
         view.getCbArtifacts().setSelected(prefs.getPrefBoolean(FPref.DECKGEN_ARTIFACTS));
+    }
+
+    private void clearTournamentData() {
+        inTournament = false;
+        tournamentRound = 0;
+        tournamentTotalRounds = 0;
+        currentRoundState = RoundState.NONE;
+        tournamentPairings = List.of();
+        tournamentStandings = List.of();
     }
 }

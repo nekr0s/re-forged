@@ -1,6 +1,5 @@
 package forge.gamemodes.tournament.system;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -16,7 +15,7 @@ import forge.util.MyRandom;
 import forge.util.TextUtil;
 
 @SuppressWarnings("serial")
-public abstract class AbstractTournament implements Serializable {
+public abstract class AbstractTournament {
     protected int activeRound;
     protected int totalRounds;
     protected int playersInPairing = 2;
@@ -130,6 +129,24 @@ public abstract class AbstractTournament implements Serializable {
 
     public List<TournamentPlayer> getAllPlayers() {
         return allPlayers;
+    }
+
+    public TournamentPlayer getPlayerByName(String name) {
+        for (TournamentPlayer tp : allPlayers) {
+            if (tp.getPlayer().getName().equals(name)) {
+                return tp;
+            }
+        }
+        return null;
+    }
+
+    public TournamentPlayer getPlayerByIndex(int index) {
+        for (TournamentPlayer tp : allPlayers) {
+            if (tp.getIndex() == index) {
+                return tp;
+            }
+        }
+        return null;
     }
 
     public static List<RegisteredPlayer> registerTournamentPlayers(TournamentPairing pairing, DeckGroup decks) {

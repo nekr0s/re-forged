@@ -68,6 +68,41 @@ public class TournamentPlayer {
 
     public int getSwissScore() { return (wins+byes)*30+ties*10+byes; }
 
+    /**
+     * Opponent Match Win percentage — the average win rate of all opponents faced.
+     * Used as a tiebreaker. Requires the full tournament player list to compute.
+     *
+     * @param allPlayers all players in the tournament
+     * @return OMW as a double (0.0 - 1.0), or 0.0 if no opponents played
+     */
+    public double getOMW(List<TournamentPlayer> allPlayers) {
+        if (previousOpponents.isEmpty()) {
+            return 0.0;
+        }
+        double totalWinRate = 0.0;
+        int opponentsFound = 0;
+        for (int oppIndex : previousOpponents) {
+            for (TournamentPlayer tp : allPlayers) {
+                if (tp.getIndex() == oppIndex) {
+                    int oppMatches = tp.getWins() + tp.getLosses() + tp.getTies();
+                    if (oppMatches > 0) {
+                        totalWinRate += (double) tp.getWins() / oppMatches;
+                    }
+                    opponentsFound++;
+                    break;
+                }
+            }
+        }
+        return opponentsFound > 0 ? totalWinRate / opponentsFound : 0.0;
+    }
+
+    /**
+     * Convenience getter for OMW as a percentage string (e.g., "67%").
+     */
+    public String getOMWPercent(java.util.List<TournamentPlayer> allPlayers) {
+        return Math.round(getOMW(allPlayers) * 100) + "%";
+    }
+
     public String getNameAndScore() {
         return TextUtil.concatNoSpace(getPlayer().getName(), TextUtil.enclosedBracket(String.valueOf(getScore())));
     }

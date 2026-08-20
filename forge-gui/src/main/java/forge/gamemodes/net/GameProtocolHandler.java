@@ -25,6 +25,11 @@ public abstract class GameProtocolHandler<T> extends ChannelInboundHandlerAdapte
     protected abstract IRemote getRemote(ChannelHandlerContext ctx);
 
     protected abstract T getToInvoke(ChannelHandlerContext ctx);
+
+    protected T getToInvoke(final ChannelHandlerContext ctx, final String matchId) {
+        return getToInvoke(ctx);
+    }
+
     protected abstract void beforeCall(ChannelHandlerContext ctx, ProtocolMethod protocolMethod, Object[] args);
 
     protected boolean shouldDispatchToGuiThread(final ProtocolMethod protocolMethod) {
@@ -51,7 +56,7 @@ public abstract class GameProtocolHandler<T> extends ChannelInboundHandlerAdapte
             final Object[] args = event.getObjects();
             protocolMethod.checkArgs(args);
 
-            final Object toInvoke = getToInvoke(ctx);
+            final Object toInvoke = getToInvoke(ctx, event.getMatchId());
             if (toInvoke == null) {
                 netLog.info("Ignoring {} — controller no longer available (game ended)", methodName);
                 // For methods expecting a reply, send null so the client doesn't hang

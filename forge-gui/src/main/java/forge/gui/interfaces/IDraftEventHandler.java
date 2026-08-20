@@ -1,21 +1,17 @@
 package forge.gui.interfaces;
 
-import java.util.List;
-
 import forge.deck.Deck;
-import forge.gamemodes.net.event.DraftAutoPickedEvent;
-import forge.gamemodes.net.event.DraftPackArrivedEvent;
-import forge.gamemodes.net.event.DraftSeatPickedEvent;
-import forge.gamemodes.net.event.NetEvent;
-import forge.gamemodes.net.event.ReceiveEventPoolEvent;
+import forge.gamemodes.net.event.*;
 import forge.item.PaperCard;
 
-public interface IDraftEventHandler {
-    void draftPackArrived(int seatIndex, List<PaperCard> pack,
+import java.util.List;
+
+public interface IDraftEventHandler extends INetEventHandler {
+    abstract void draftPackArrived(int seatIndex, List<PaperCard> pack,
             int packNumber, int pickNumber, int timerDurationSeconds);
-    void draftSeatPicked(int seatIndex, int[] seatQueueDepths);
-    void draftAutoPicked(int seatIndex, PaperCard card, int packNumber, int pickInPack);
-    void receiveEventPool(String eventId, Deck pool);
+    abstract void draftSeatPicked(int seatIndex, int[] seatQueueDepths);
+    abstract void draftAutoPicked(int seatIndex, PaperCard card, int packNumber, int pickInPack);
+    abstract void receiveEventPool(String eventId, Deck pool);
 
     /** Returns true if {@code event} was a draft event and was dispatched. */
     default boolean dispatch(NetEvent event) {

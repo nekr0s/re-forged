@@ -26,6 +26,14 @@ public final class EventParticipant implements Serializable {
     private final int seatIndex;
     private final int lobbySlotIndex;
 
+    // Server-only: the tournament engine object and the participant's deck are never
+    // shipped to clients. They live on the server's live NetworkEvent; marking them
+    // transient keeps them out of the serialized NetworkEventView (which rides inside
+    // LobbyUpdateEvent/GameLobbyData) — otherwise every lobby update to clients fails
+    // with NotSerializableException once the tournament starts.
+    private transient forge.gamemodes.tournament.system.TournamentPlayer tournamentPlayer;
+    private transient forge.deck.Deck deck;
+
     public EventParticipant(String name, Type type, int seatIndex, int lobbySlotIndex) {
         this.name = name;
         this.type = type;
@@ -39,6 +47,11 @@ public final class EventParticipant implements Serializable {
     public int getLobbySlotIndex() { return lobbySlotIndex; }
     public boolean isHuman() { return type == Type.HUMAN; }
     public boolean isAI() { return type == Type.AI; }
+
+    public forge.gamemodes.tournament.system.TournamentPlayer getTournamentPlayer() { return tournamentPlayer; }
+    public void setTournamentPlayer(forge.gamemodes.tournament.system.TournamentPlayer tp) { this.tournamentPlayer = tp; }
+    public forge.deck.Deck getDeck() { return deck; }
+    public void setDeck(forge.deck.Deck deck) { this.deck = deck; }
 
     public static EventParticipant findBySeat(List<EventParticipant> list, int seatIndex) {
         if (list == null) return null;

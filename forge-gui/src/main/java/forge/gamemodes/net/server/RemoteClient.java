@@ -11,6 +11,8 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 
 import java.net.SocketAddress;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class RemoteClient implements IToClient, IHasForgeLog {
@@ -22,11 +24,13 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
     private String username;
     private int index = UNASSIGNED_SLOT;
     private boolean libgdx;
-    private volatile ReplyPool replies = new ReplyPool();
-    private volatile Tracker codecTracker;
-    private volatile int codecConsumerId = -1;
+    private volatile ReplyPool defaultReplies = new ReplyPool();
+    private final Map<String, ReplyPool> matchReplies = new ConcurrentHashMap<>();
+    private volatile Tracker defaultCodecTracker;
+    private volatile int defaultCodecConsumerId = -1;
     private final AtomicInteger sendErrors = new AtomicInteger(0);
-    private RemoteClientGuiGame gui;
+    private final Map<String, RemoteClientGuiGame> matchGuis = new ConcurrentHashMap<>();
+    private volatile String activeMatchId;
 
     // Package-private: SaturationLoggingHandler reads/resets these on writability transitions
     volatile long saturationStartMs = 0L;
@@ -44,12 +48,13 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
 
     /**
      * Swap the underlying channel for a reconnecting client.
-     * Updates the channel, creates a fresh ReplyPool, and re-applies the codec
-     * tracker to the new channel's pipeline so IdRef resolution keeps working.
+     * Updates the channel and re-applies the codec tracker to the new channel's
+     * pipeline so IdRef resolution keeps working. Per-match ReplyPools and codec
+     * trackers are preserved — reconnect should not lose match state.
      */
     public void swapChannel(final Channel newChannel) {
         this.channel = newChannel;
-        this.replies = new ReplyPool();
+        // Keep existing ReplyPools and codec trackers — reconnect preserves match state
         applyCodecTracker(newChannel);
     }
 
@@ -127,6 +132,7 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
 
     @Override
     public Object sendAndWait(final IdentifiableNetEvent event) {
+        ReplyPool replies = getReplyPool();
         replies.initialize(event.getId());
         final Channel ch = channel;
         recordSendIfSaturated(ch);
@@ -172,11 +178,59 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         this.libgdx = libgdx;
     }
 
+    // Backward compat: returns the active match's GUI (or null)
     public RemoteClientGuiGame getGui() {
-        return gui;
+        return activeMatchId != null ? matchGuis.get(activeMatchId) : null;
     }
+
+    // Backward compat for code that calls setGui(null) to clear
     void setGui(final RemoteClientGuiGame gui) {
-        this.gui = gui;
+        if (gui == null) {
+            if (activeMatchId != null) {
+                matchGuis.remove(activeMatchId);
+            }
+        } else {
+            // Legacy path — assign to active match or a default key
+            if (activeMatchId == null) {
+                activeMatchId = "default";
+            }
+            matchGuis.put(activeMatchId, gui);
+        }
+    }
+
+    // New multi-match API
+    public RemoteClientGuiGame getMatchGui(final String matchId) {
+        return matchGuis.get(matchId);
+    }
+
+    public void setMatchGui(final String matchId, final RemoteClientGuiGame gui) {
+        matchGuis.put(matchId, gui);
+    }
+
+    public void removeMatchGui(final String matchId) {
+        matchGuis.remove(matchId);
+        matchReplies.remove(matchId);
+        if (activeMatchId != null && activeMatchId.equals(matchId)) {
+            activeMatchId = matchGuis.isEmpty() ? null : matchGuis.keySet().iterator().next();
+        }
+    }
+
+    public void clearAllMatchGuis() {
+        matchGuis.clear();
+        matchReplies.clear();
+        activeMatchId = null;
+    }
+
+    public RemoteClientGuiGame getActiveMatchGui() {
+        return activeMatchId != null ? matchGuis.get(activeMatchId) : null;
+    }
+
+    public void setActiveMatchId(final String matchId) {
+        activeMatchId = matchId;
+    }
+
+    public String getActiveMatchId() {
+        return activeMatchId;
     }
 
     /**
@@ -189,16 +243,16 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
      */
     public void setCodecTracker(Tracker tracker, int consumerId) {
         // Skip no-op rebinds: setGameView fires on every view push, the tracker changes per game.
-        if (tracker == codecTracker && consumerId == codecConsumerId) {
+        if (tracker == defaultCodecTracker && consumerId == defaultCodecConsumerId) {
             return;
         }
-        this.codecTracker = tracker;
-        this.codecConsumerId = consumerId;
+        this.defaultCodecTracker = tracker;
+        this.defaultCodecConsumerId = consumerId;
         applyCodecTracker(channel);
     }
 
     private void applyCodecTracker(Channel ch) {
-        if (codecTracker == null || ch == null) {
+        if (defaultCodecTracker == null || ch == null) {
             return;
         }
         // Swap on the event loop so it lands between decoded frames: a message the
@@ -209,13 +263,21 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         }
         CompatibleObjectEncoder encoder = ch.pipeline().get(CompatibleObjectEncoder.class);
         if (encoder != null) {
-            encoder.setTracker(codecTracker);
-            encoder.setConsumerId(codecConsumerId);
+            encoder.setTracker(defaultCodecTracker);
+            encoder.setConsumerId(defaultCodecConsumerId);
         }
         CompatibleObjectDecoder decoder = ch.pipeline().get(CompatibleObjectDecoder.class);
         if (decoder != null) {
-            decoder.setTracker(codecTracker);
+            decoder.setTracker(defaultCodecTracker);
         }
+    }
+
+    public Tracker getCodecTracker() {
+        return defaultCodecTracker;
+    }
+
+    public int getCodecConsumerId() {
+        return defaultCodecConsumerId;
     }
 
     public int getSendErrorCount() {
@@ -223,6 +285,21 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
     }
 
     ReplyPool getReplyPool() {
-        return replies;
+        return activeMatchId != null
+            ? matchReplies.computeIfAbsent(activeMatchId, k -> new ReplyPool())
+            : defaultReplies;
+    }
+
+    ReplyPool getReplyPool(final String matchId) {
+        if (matchId == null) {
+            return defaultReplies;
+        }
+        return matchReplies.computeIfAbsent(matchId, k -> new ReplyPool());
+    }
+
+    void removeReplyPool(final String matchId) {
+        if (matchId != null) {
+            matchReplies.remove(matchId);
+        }
     }
 }

@@ -21,6 +21,7 @@ import forge.game.player.PlayerView;
 import forge.game.player.RegisteredPlayer;
 import forge.gamemodes.net.NetworkGameEventListener;
 import forge.gamemodes.net.server.FServerManager;
+import forge.gamemodes.net.server.RemoteClientGuiGame;
 import forge.gamemodes.quest.QuestController;
 import forge.gui.FThreads;
 import forge.gui.GuiBase;
@@ -49,6 +50,7 @@ import java.util.*;
 import java.util.Map.Entry;
 
 public class HostedMatch {
+    private final String matchId = UUID.randomUUID().toString();
     private Match match;
     private Game game;
     private String title;
@@ -57,6 +59,7 @@ public class HostedMatch {
     private Runnable startGameHook = null;
     private Runnable endGameHook = null;
     private Runnable onMatchOver = null;
+    private boolean autoSpectate = true;
     private final List<PlayerControllerHuman> humanControllers = Lists.newArrayList();
     private Map<RegisteredPlayer, IGuiGame> guis;
     private int humanCount;
@@ -68,11 +71,16 @@ public class HostedMatch {
 
     public HostedMatch() {}
 
+    public String getMatchId() {
+        return matchId;
+    }
+
     public void setStartGameHook(Runnable hook) {
         startGameHook = hook;
     }
     public void setEndGameHook(Runnable hook) { endGameHook = hook; }
     public void setOnMatchOver(Runnable callback) { onMatchOver = callback; }
+    public void setAutoSpectate(boolean value) { this.autoSpectate = value; }
 
     private static GameRules getDefaultRules(final GameType gameType) {
         final GameRules gameRules = new GameRules(gameType);
@@ -271,7 +279,7 @@ public class HostedMatch {
             e.getKey().openView(new TrackableCollection<>(e.getValue()));
         }
 
-        if (humanCount == 0) { //watch game but do not participate
+        if (humanCount == 0 && autoSpectate) { //watch game but do not participate
             final IGuiGame gui = GuiBase.getInterface().getNewGuiGame();
             gui.setGameView(null); //clear the view so when the game restarts again, it updates correctly
             gui.setGameView(gameView);
@@ -297,7 +305,7 @@ public class HostedMatch {
             // concurrently clears the `game` field while match.startGame() is wrapping up.
             final Game currentGame = game;
 
-            if (humanCount == 0) {
+            if (humanCount == 0 && !humanControllers.isEmpty()) {
                 // Create FControlGamePlayback in game thread to allow pausing
                 playbackControl = new FControlGamePlayback(humanControllers.get(0));
                 playbackControl.setGame(currentGame);
@@ -364,6 +372,30 @@ public class HostedMatch {
         gui.openView(null);
         game.subscribeToEvents(new FControlGameEventHandler(humanController));
         humanControllers.add(humanController);
+    }
+
+    /**
+     * Register a remote (network) spectator for this match.
+     * Creates a WatchRemoteGame controller and subscribes its GameEventForwarder
+     * to the game's event bus, plus the forwarder as an InputQueue observer.
+     */
+    public void registerNetworkSpectator(final RemoteClientGuiGame gui) {
+        final forge.gamemodes.net.server.WatchRemoteGame spectatorController =
+            new forge.gamemodes.net.server.WatchRemoteGame(game, null, gui);
+        gui.setSpectator(spectatorController);
+        gui.openView(null);
+
+        // Create a GameEventForwarder to push events to the remote client
+        final forge.gui.control.GameEventForwarder forwarder = new forge.gui.control.GameEventForwarder(gui);
+        gui.setForwarder(forwarder);
+        game.subscribeToEvents(forwarder);
+
+        // Subscribe forwarder to all human controllers' input queues
+        for (final PlayerControllerHuman hc : humanControllers) {
+            hc.getInputQueue().addObserver(forwarder);
+        }
+
+        humanControllers.add(spectatorController);
     }
 
     public Game getGame() {

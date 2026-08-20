@@ -185,6 +185,12 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
         }
         tempShownCards.add(c);
         c.addMayLookTemp(player);
+        // Diagnostic: an opponent's hand card becoming "may look" for this player is
+        // exactly what makes the client render that hand face-up (mayViewAny/canBeShownTo).
+        if (c.isInZone(ZoneType.Hand) && c.getOwner() != player) {
+            netLog.info("[mayLook] {} temp-showing hand card {} (owner {})",
+                    player.getName(), c, c.getOwner());
+        }
     }
 
     @Override
@@ -200,8 +206,15 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
             return;
         }
 
+        long shownHandCards = tempShownCards.stream()
+                .filter(c -> c.isInZone(ZoneType.Hand) && c.getOwner() != player)
+                .count();
         for (final Card c : tempShownCards) {
             c.removeMayLookTemp(player);
+        }
+        if (shownHandCards > 0) {
+            netLog.info("[mayLook] {} endTempShowCards cleared {} shown opponent hand card(s)",
+                    player.getName(), shownHandCards);
         }
         tempShownCards.clear();
     }

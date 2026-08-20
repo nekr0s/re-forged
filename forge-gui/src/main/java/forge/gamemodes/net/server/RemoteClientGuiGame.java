@@ -59,6 +59,7 @@ public class RemoteClientGuiGame extends NetworkGuiGame implements IHasForgeLog 
     public static boolean useDeltaSync = true;
 
     private final RemoteClient client;
+    private final String matchId;
     private final GameProtocolSender sender;
     private final DeltaSyncManager syncManager;
 
@@ -71,11 +72,24 @@ public class RemoteClientGuiGame extends NetworkGuiGame implements IHasForgeLog 
     private GameEventForwarder forwarder;
     private boolean flushing;
 
-    public RemoteClientGuiGame(final RemoteClient client) {
+    public RemoteClientGuiGame(final RemoteClient client, final String matchId) {
         this.client = client;
-        sender = new GameProtocolSender(client);
+        this.matchId = matchId;
+        sender = new GameProtocolSender(client, matchId);
         syncManager = new DeltaSyncManager();
-        client.setGui(this);
+        if (matchId != null) {
+            client.setMatchGui(matchId, this);
+        } else {
+            client.setGui(this);
+        }
+    }
+
+    public RemoteClientGuiGame(final RemoteClient client) {
+        this(client, null);
+    }
+
+    public String getMatchId() {
+        return matchId;
     }
 
     public RemoteClient getClient() {

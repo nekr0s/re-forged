@@ -43,7 +43,7 @@ public abstract class GameLobby implements IHasGameType {
 
     private IUpdateable listener;
 
-    private HostedMatch hostedMatch;
+    private final MatchRegistry activeMatches = new MatchRegistry();
     private final HashMap<LobbySlot, IGameController> gameControllers = Maps.newHashMap();
 
     public boolean isAllowNetworking() {
@@ -51,11 +51,23 @@ public abstract class GameLobby implements IHasGameType {
     }
 
     public final boolean isMatchActive() {
-        return hostedMatch != null && hostedMatch.isMatchOver() == false;
+        return activeMatches.hasActiveMatches();
+    }
+
+    public MatchRegistry getActiveMatches() {
+        return activeMatches;
     }
 
     public HostedMatch getHostedMatch() {
-        return hostedMatch;
+        // Backward compat: return first active match, or null
+        if (activeMatches.isEmpty()) {
+            return null;
+        }
+        return activeMatches.getAll().iterator().next();
+    }
+
+    public HostedMatch getMatch(String matchId) {
+        return activeMatches.get(matchId);
     }
 
     public void setListener(final IUpdateable listener) {
@@ -156,7 +168,7 @@ public abstract class GameLobby implements IHasGameType {
         return gameControllers.get(getSlot(index));
     }
     public GameView getGameView() {
-        return hostedMatch.getGameView();
+        return getHostedMatch().getGameView();
     }
 
     public abstract boolean hasControl();
@@ -557,8 +569,9 @@ public abstract class GameLobby implements IHasGameType {
         //if above checks succeed, return runnable that can be used to finish starting game
         final GameType baseGameType = data.isLimitedMode() ? GameType.Draft : GameType.Constructed;
         return () -> {
-            hostedMatch = GuiBase.getInterface().hostMatch();
-            hostedMatch.setOnMatchOver(this::onMatchOver);
+            final HostedMatch hostedMatch = GuiBase.getInterface().hostMatch();
+            activeMatches.register(hostedMatch);
+            hostedMatch.setOnMatchOver(() -> onMatchOver(hostedMatch.getMatchId()));
             hostedMatch.startMatch(baseGameType, variantTypes, players, guis);
 
             for (final Player p : hostedMatch.getGame().getPlayers()) {
@@ -574,10 +587,92 @@ public abstract class GameLobby implements IHasGameType {
         };
     }
 
+    public Runnable startMatch(final List<Integer> slotIndices, final GameType gameType, final Set<GameType> appliedVariants) {
+        return startMatch(slotIndices, gameType, appliedVariants, true);
+    }
+
+    public Runnable startMatch(final List<Integer> slotIndices, final GameType gameType, final Set<GameType> appliedVariants, final boolean autoSpectate) {
+        final List<LobbySlot> activeSlots = Lists.newArrayListWithCapacity(slotIndices.size());
+        for (final int idx : slotIndices) {
+            final LobbySlot slot = data.slots.get(idx);
+            if (slot.getType() != LobbySlotType.OPEN) {
+                activeSlots.add(slot);
+            }
+        }
+
+        if (activeSlots.size() < 2) {
+            return null;
+        }
+
+        final List<RegisteredPlayer> players = new ArrayList<>();
+        final Map<RegisteredPlayer, IGuiGame> guis = Maps.newHashMap();
+        final Map<RegisteredPlayer, LobbySlot> playerToSlot = Maps.newHashMap();
+        boolean hasNameBeenSet = false;
+
+        for (final LobbySlot slot : activeSlots) {
+            final int slotIndex = data.slots.indexOf(slot);
+            final IGuiGame gui = getGui(slotIndex);
+            final String name = slot.getName();
+            final int avatar = slot.getAvatarIndex();
+            final int sleeve = slot.getSleeveIndex();
+            final int team = slot.getTeam();
+            final Set<AIOption> aiOptions = slot.getAiOptions();
+            final boolean isAI = slot.getType() == LobbySlotType.AI;
+            final LobbyPlayer lobbyPlayer;
+            if (isAI) {
+                lobbyPlayer = GamePlayerUtil.createAiPlayer(name, avatar, sleeve, aiOptions, slot.getAiProfile());
+            } else {
+                boolean setNameNow = false;
+                if (!hasNameBeenSet && slot.getType() == LobbySlotType.LOCAL) {
+                    setNameNow = true;
+                    hasNameBeenSet = true;
+                }
+                lobbyPlayer = GamePlayerUtil.getGuiPlayer(name, avatar, sleeve, setNameNow);
+            }
+            final Deck deck = slot.getDeck();
+            lobbyPlayer.setSleeveArtKey(deck == null ? "" : deck.getSleeveArtKey());
+            lobbyPlayer.setSleeveArtOffset(deck == null ? Deck.DEFAULT_SLEEVE_OFFSET : deck.getSleeveArtOffset());
+
+            final RegisteredPlayer rp = new RegisteredPlayer(deck);
+            rp.setTeamNumber(team);
+            players.add(rp.setPlayer(lobbyPlayer));
+            if (!isAI) {
+                guis.put(rp, gui);
+            }
+            playerToSlot.put(rp, slot);
+        }
+
+        return () -> {
+            final HostedMatch hostedMatch = GuiBase.getInterface().hostMatch();
+            activeMatches.register(hostedMatch);
+            hostedMatch.setOnMatchOver(() -> onMatchOver(hostedMatch.getMatchId()));
+            hostedMatch.setAutoSpectate(autoSpectate);
+            hostedMatch.startMatch(gameType, appliedVariants, players, guis);
+
+            for (final Player p : hostedMatch.getGame().getPlayers()) {
+                final LobbySlot slot = playerToSlot.get(p.getRegisteredPlayer());
+                if (p.getController() instanceof IGameController controller) {
+                    gameControllers.put(slot, controller);
+                }
+            }
+            hostedMatch.gameControllers = gameControllers;
+            onGameStarted();
+        };
+    }
+
     protected void onMatchOver() {
-        hostedMatch = null;
+        // Legacy single-match path — clear everything
+        activeMatches.getAll().forEach(m -> activeMatches.unregister(m.getMatchId()));
         gameControllers.clear();
         updateView(true);
+    }
+
+    protected void onMatchOver(String matchId) {
+        activeMatches.unregister(matchId);
+        if (activeMatches.isEmpty()) {
+            gameControllers.clear();
+            updateView(true);
+        }
     }
 
     public final static class GameLobbyData implements Serializable {

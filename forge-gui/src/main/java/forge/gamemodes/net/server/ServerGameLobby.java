@@ -6,7 +6,9 @@ import forge.deck.DeckSection;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
 import forge.gamemodes.limited.SealedCardPoolGenerator;
+import forge.gamemodes.limited.SealedDeckBuilder;
 import forge.gamemodes.match.GameLobby;
+import forge.gamemodes.match.HostedMatch;
 import forge.gamemodes.match.LobbySlot;
 import forge.gamemodes.match.LobbySlotType;
 import forge.gamemodes.net.draft.BoosterDraftHost;
@@ -15,8 +17,13 @@ import forge.gamemodes.net.EventParticipant;
 import forge.gamemodes.net.EventPhase;
 import forge.gamemodes.net.NetworkEvent;
 import forge.gamemodes.net.event.DraftPickEvent;
+import forge.gamemodes.net.event.MessageEvent;
+import forge.gamemodes.net.event.NetEvent;
 import forge.gamemodes.net.event.ReceiveEventPoolEvent;
+import forge.gamemodes.net.event.UpdateLobbyPlayerEvent;
 import forge.gui.interfaces.IGuiGame;
+import forge.localinstance.properties.ForgePreferences;
+import forge.model.FModel;
 import forge.util.IHasForgeLog;
 import org.apache.commons.lang3.StringUtils;
 
@@ -34,9 +41,11 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
 
     private BoosterDraftHost draftHost;
     private NetworkEvent currentEvent;
+    private ServerTournamentController tournamentController;
 
     public NetworkEvent getCurrentEvent() { return currentEvent; }
     public void setCurrentEvent(NetworkEvent event) { this.currentEvent = event; }
+    public ServerTournamentController getTournamentController() { return tournamentController; }
 
     @Override
     protected void updateView(boolean fullUpdate) {
@@ -148,6 +157,26 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         FServerManager.getInstance().updateLobbyState();
     }
 
+    @Override
+    protected void onMatchOver(final String matchId) {
+        // Scoped: only this match's players are affected. In a tournament the
+        // controller's between-round standby owns the ready reset, so skip it here.
+        final HostedMatch match = getMatch(matchId);
+        if (tournamentController == null && match != null && match.gameControllers != null) {
+            for (LobbySlot slot : match.gameControllers.keySet()) {
+                if (slot != null) {
+                    slot.setIsReady(false);
+                }
+            }
+        }
+        super.onMatchOver(matchId);
+        FServerManager.getInstance().clearPlayerGuis(matchId);
+        // Only update lobby if no more matches active
+        if (!isMatchActive()) {
+            FServerManager.getInstance().updateLobbyState();
+        }
+    }
+
     /**
      * Create the in-memory event. Does not broadcast — clients see the event
      * only after {@link #configureEvent} completes successfully. If the user
@@ -204,6 +233,10 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
      */
     public synchronized void clearCurrentEvent() {
         if (getCurrentEvent() == null) return;
+        if (tournamentController != null) {
+            tournamentController.shutdown();
+            tournamentController = null;
+        }
         netLog.info("Event cleared by host");
         if (draftHost != null) {
             draftHost.shutdown();
@@ -348,6 +381,97 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
     }
 
     /**
+     * Start a tournament for the current event.
+     * Requires that all participants have built decks and are ready.
+     *
+     * @param gamesPerMatch 1, 3, or 5
+     */
+    public synchronized void startTournament(int gamesPerMatch) {
+        NetworkEvent event = getCurrentEvent();
+        if (event == null) return;
+
+        for (EventParticipant p : event.getParticipants()) {
+            if (p.isAI()) continue;
+            LobbySlot slot = getSlot(p.getLobbySlotIndex());
+            if (slot != null && !slot.isReady()) {
+                netLog.warn("Cannot start tournament: {} is not ready", p.getName());
+                return;
+            }
+            if (slot != null && slot.getDeck() == null) {
+                netLog.warn("Cannot start tournament: {} has no deck", p.getName());
+                FServerManager.getInstance().broadcast(new MessageEvent(
+                        "Cannot start tournament: " + p.getName() + " has no deck."));
+                return;
+            }
+            if (slot != null && slot.getDeck() != null
+                    && (slot.getDeck().getMain() == null || slot.getDeck().getMain().isEmpty())) {
+                netLog.warn("Cannot start tournament: {} has an empty deck (pool not built into Main)", p.getName());
+                FServerManager.getInstance().broadcast(new MessageEvent(
+                        "Cannot start tournament: " + p.getName() + " has not finished building their deck."));
+                return;
+            }
+        }
+
+        final boolean checkLegality = FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.ENFORCE_DECK_LEGALITY);
+        final List<String> legalityProblems = new ArrayList<>();
+
+        //Auto-generated decks don't need to be checked here
+        //Commander deck replaces regular deck and is checked later
+//        if (checkLegality && autoGenerateVariant == null) {
+//            final DeckFormat deckFormat = data.isLimitedMode() ? DeckFormat.Limited : GameType.Constructed.getDeckFormat();
+//            for (final LobbySlot slot : activeSlots) {
+//                final String name = slot.getName();
+//                final String errMsg = deckFormat.getDeckConformanceProblem(slot.getDeck());
+//                if (null != errMsg) {
+//                    legalityProblems.add(legalityProblemEntry(name, errMsg));
+//                }
+//            }
+//        }
+
+        tournamentController = new ServerTournamentController(this, event);
+        tournamentController.startTournament();
+        netLog.info("Tournament started — gamesPerMatch={}", gamesPerMatch);
+    }
+
+    /**
+     * Server-initiated ready change, routed through the same slot-update path a
+     * player's own click uses so the funnel refreshes the host's screen and
+     * broadcasts to remote clients.
+     */
+    public void setPlayerReady(int slotIndex, boolean ready) {
+        applyToSlot(slotIndex, UpdateLobbyPlayerEvent.isReadyUpdate(ready));
+    }
+
+    /**
+     * Called when a player toggles ready during tournament between-round standby.
+     * Retained for safety; the host explicitly starts the next round via
+     * {@link #hostStartNextRound()}.
+     */
+    public void onPlayerReadyTournament(int slotIndex) {
+        if (tournamentController != null) {
+            tournamentController.onPlayerReady(slotIndex);
+        }
+    }
+
+    /**
+     * Whether every human participant has marked themselves ready during
+     * between-round standby. Used by the host UI to enable the
+     * "Start Next Round" button.
+     */
+    public boolean areAllHumansReadyForTournament() {
+        return tournamentController != null && tournamentController.isAllHumanPlayersReady();
+    }
+
+    /**
+     * Host action: start the next round of tournament matches.
+     */
+    public void hostStartNextRound() {
+        if (tournamentController != null) {
+            tournamentController.startNextRound();
+        }
+    }
+
+    /**
      * Generate sealed pools and send one to each human participant.
      * Each pool is 6 boosters opened into a CardPool, wrapped in a Deck.
      */
@@ -372,23 +496,32 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         FServerManager server = FServerManager.getInstance();
 
         for (EventParticipant participant : event.getParticipants()) {
-            if (participant.isAI()) {
-                continue;
+            if (participant.isHuman()) {
+                CardPool pool = gen.getCardPool(false);
+                if (pool == null) {
+                    netLog.warn("Failed to generate pool for {}", participant.getName());
+                    continue;
+                }
+
+                Deck deck = new Deck(NetworkEvent.poolNameFor(event));
+                deck.getOrCreate(DeckSection.Sideboard).addAll(pool);
+                NetworkEvent.setEventTags(deck, event);
+
+                server.sendToSlot(participant.getLobbySlotIndex(),
+                        new ReceiveEventPoolEvent(eventId, deck));
+                netLog.info("Sent sealed pool to {} ({} cards)", participant.getName(), pool.countAll());
+            } else {
+                CardPool pool = gen.getCardPool(false);
+                if (pool == null) {
+                    netLog.warn("Failed to generate pool for {}", participant.getName());
+                    continue;
+                }
+
+                Deck deck = new SealedDeckBuilder(pool.toFlatList()).buildDeck(gen.getLandSetCode());
+                NetworkEvent.setEventTags(deck, event);
+                participant.setDeck(deck);
+                netLog.info("Built sealed deck for AI {} ({} cards)", participant.getName(), deck.getMain().countAll());
             }
-
-            CardPool pool = gen.getCardPool(false);
-            if (pool == null) {
-                netLog.warn("Failed to generate pool for {}", participant.getName());
-                continue;
-            }
-
-            Deck deck = new Deck(NetworkEvent.poolNameFor(event));
-            deck.getOrCreate(DeckSection.Sideboard).addAll(pool);
-            NetworkEvent.setEventTags(deck, event);
-
-            server.sendToSlot(participant.getLobbySlotIndex(),
-                    new ReceiveEventPoolEvent(eventId, deck));
-            netLog.info("Sent sealed pool to {} ({} cards)", participant.getName(), pool.countAll());
         }
     }
 
@@ -446,5 +579,9 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
 
     public BoosterDraftHost getDraftHost() {
         return draftHost;
+    }
+
+    void broadcastTournamentEvent(NetEvent event) {
+        FServerManager.getInstance().broadcast(event);
     }
 }

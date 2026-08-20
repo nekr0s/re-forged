@@ -5,14 +5,13 @@ import forge.deck.DeckProxy;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
 import forge.gamemodes.limited.SealedCardPoolGenerator;
+import forge.gamemodes.tournament.system.TournamentRoundRobin;
 import forge.model.FModel;
 import forge.util.Localizer;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Model and helpers for a network limited event (draft or sealed).
@@ -41,6 +40,7 @@ public final class NetworkEvent {
     private int numRounds = 3;
     private SealedCardPoolGenerator sealedGenerator;
     private BoosterDraft draft;
+    private TournamentRoundRobin tournament;
 
     public NetworkEvent(EventFormat format) {
         this.eventId = UUID.randomUUID().toString().substring(0, 8);
@@ -73,7 +73,6 @@ public final class NetworkEvent {
     public void setDraft(BoosterDraft draft) { this.draft = draft; }
     public int getNumRounds() { return numRounds; }
     public void setNumRounds(int numRounds) { this.numRounds = numRounds; }
-
     public void addParticipant(EventParticipant participant) {
         participants.add(participant);
     }

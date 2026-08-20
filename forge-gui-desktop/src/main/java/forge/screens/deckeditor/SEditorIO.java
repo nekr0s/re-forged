@@ -7,11 +7,14 @@ import org.apache.commons.lang3.StringUtils;
 import com.google.common.collect.ImmutableList;
 
 import forge.Singletons;
+import forge.deck.Deck;
 import forge.deck.DeckProxy;
+import forge.deck.DeckSection;
 import forge.deck.io.DeckPreferences;
 import forge.gui.framework.FScreen;
 import forge.model.FModel;
 import forge.toolbox.FOptionPane;
+import forge.util.IHasForgeLog;
 import forge.util.Localizer;
 
 /** 
@@ -56,6 +59,15 @@ public class SEditorIO {
 
         if (performSave) {
             controller.saveAs(name);
+            // Diagnostic for the tournament "built deck never uploaded" bug: confirms the
+            // network-event deck save persisted with a populated Main.
+            if (controller.getModel() instanceof Deck savedDeck
+                    && savedDeck.getTags().stream().anyMatch(t -> t.startsWith("eventId:"))) {
+                IHasForgeLog.netLog.info("[deckSave] network event deck '{}' saved — main={} side={}",
+                        savedDeck.getName(),
+                        savedDeck.getMain() == null ? -1 : savedDeck.getMain().countAll(),
+                        savedDeck.get(DeckSection.Sideboard) == null ? -1 : savedDeck.get(DeckSection.Sideboard).countAll());
+            }
             switch (CDeckEditorUI.SINGLETON_INSTANCE.getCurrentEditorController().getGameType()){
                 case Brawl:
                     CBrawlDecks.SINGLETON_INSTANCE.refresh();

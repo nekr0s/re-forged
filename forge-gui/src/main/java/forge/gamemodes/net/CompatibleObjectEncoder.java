@@ -49,14 +49,14 @@ public class CompatibleObjectEncoder extends MessageToByteEncoder<Serializable> 
 
     @Override
     protected void encode(ChannelHandlerContext ctx, Serializable msg, ByteBuf out) throws Exception {
-        encodeInto(msg, out, this.tracker, this.consumerId, this.byteTracker);
+        encodeInto(msg, out, tracker, consumerId, byteTracker);
     }
 
     /** Caller passes the returned buffer to writeAndFlush, which takes ownership. */
     public ByteBuf encodeToBuf(Serializable msg, ByteBufAllocator alloc) throws Exception {
         ByteBuf out = alloc.buffer();
         try {
-            encodeInto(msg, out, this.tracker, this.consumerId, this.byteTracker);
+            encodeInto(msg, out, tracker, consumerId, byteTracker);
         } catch (Exception e) {
             out.release();
             throw e;

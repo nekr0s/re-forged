@@ -22,6 +22,7 @@ import forge.gamemodes.match.GameLobby;
 import forge.gamemodes.match.LobbySlot;
 import forge.gamemodes.match.LobbySlotType;
 import forge.gamemodes.net.*;
+import forge.gamemodes.net.server.ServerGameLobby;
 import forge.gamemodes.net.event.UpdateLobbyPlayerEvent;
 import forge.gui.CardDetailPanel;
 import forge.gui.FThreads;
@@ -41,12 +42,14 @@ import forge.toolbox.FSkin.SkinImage;
 import forge.util.*;
 import net.miginfocom.swing.MigLayout;
 
+import static java.util.Objects.requireNonNull;
+
 /**
  * Lobby view. View of a number of players at the deck selection stage.
  *
  * <br><br><i>(V at beginning of class name denotes a view class.)</i>
  */
-public class VLobby implements ILobbyView {
+public class VLobby implements ILobbyView, IHasForgeLog {
 
     static final int MAX_PLAYERS = 8;
     private static final int EVENT_BTN_WIDTH = 200;
@@ -152,6 +155,16 @@ public class VLobby implements ILobbyView {
     // Action buttons for Draft/Sealed mode
     private final FButton btnStartEvent = new FButton(Localizer.getInstance().getMessage("lblNetworkStartDraft"));
     private final FButton btnStartMatch = new FButton(Localizer.getInstance().getMessage("lblNetworkStartMatch"));
+
+    // Tournament panel
+    private final FPanel tournamentPanel = new FPanel(new MigLayout("insets 5 10 15 10, gap 2, wrap", "[grow, fill]"));
+    private final FLabel lblTournamentTitle = new FLabel.Builder().fontSize(15).fontStyle(Font.BOLD).build();
+    private final FLabel lblTournamentRound = new FLabel.Builder().fontSize(13).build();
+    private final FLabel lblTournamentStandings = new FLabel.Builder().fontSize(12).fontAlign(SwingConstants.LEFT).build();
+    private final FLabel lblTournamentPairings = new FLabel.Builder().fontSize(12).fontAlign(SwingConstants.LEFT).build();
+    private final FButton btnStartTournament = new FButton("Start Tournament");
+    private final FButton btnCancelTournament = new FButton("Cancel Tournament");
+    private final FButton btnStartNextRound = new FButton("Start Next Round");
 
     private boolean refreshGeneratedDecks = false;
 
@@ -297,6 +310,26 @@ public class VLobby implements ILobbyView {
             });
             btnNewEvent.setFont(FSkin.getRelativeFont(18));
             btnNewEvent.addActionListener(e -> controller.openEventConfigDialog());
+
+            btnStartTournament.setFont(FSkin.getRelativeFont(18));
+            btnStartTournament.addActionListener(e -> {
+                if (lobby instanceof ServerGameLobby sgl) {
+                    int gamesPerMatch = Integer.parseInt(requireNonNull(gamesInMatch.getSelectedItem()).toString());
+                    sgl.startTournament(gamesPerMatch);
+                }
+            });
+            btnCancelTournament.setFont(FSkin.getRelativeFont(18));
+            btnCancelTournament.addActionListener(e -> {
+                if (lobby instanceof ServerGameLobby sgl && sgl.getTournamentController() != null) {
+                    sgl.getTournamentController().shutdown();
+                }
+            });
+            btnStartNextRound.setFont(FSkin.getRelativeFont(18));
+            btnStartNextRound.addActionListener(e -> {
+                if (lobby instanceof ServerGameLobby sgl) {
+                    sgl.hostStartNextRound();
+                }
+            });
         }
         String defaultGamesInMatch = FModel.getPreferences().getPref(FPref.UI_MATCHES_PER_GAME);
         if (defaultGamesInMatch == null || defaultGamesInMatch.isEmpty()) {
@@ -561,6 +594,10 @@ public class VLobby implements ILobbyView {
     private void fireDeckChangeListener(final int index, final Deck deck) {
         decks[index] = deck;
         getPlayerPanel(index).refreshSleeveFromDeck(deck);
+        netLog.info("[deckUp] slot {} uploading deck '{}' main={} side={}",
+                index, deck == null ? "null" : deck.getName(),
+                deck == null || deck.getMain() == null ? -1 : deck.getMain().countAll(),
+                deck == null || deck.get(DeckSection.Sideboard) == null ? -1 : deck.get(DeckSection.Sideboard).countAll());
         if (playerChangeListener != null) {
             playerChangeListener.update(index, UpdateLobbyPlayerEvent.deckUpdate(deck));
         }
@@ -893,6 +930,88 @@ public class VLobby implements ILobbyView {
         }
     }
 
+    void refreshTournamentPanel() {
+        CLobby controller = getController();
+        if (controller == null || !controller.isInTournament()) {
+            tournamentPanel.setVisible(false);
+            return;
+        }
+        tournamentPanel.setVisible(true);
+        tournamentPanel.removeAll();
+
+        int round = controller.getTournamentRound();
+        int total = controller.getTournamentTotalRounds();
+        RoundState roundState = controller.getCurrentRoundState();
+        lblTournamentTitle.setText("Tournament");
+        if (roundState == RoundState.ACTIVE) {
+            lblTournamentRound.setText("Round " + round + " of " + total + " in progress");
+        } else if (roundState == RoundState.COMPLETE) {
+            lblTournamentRound.setText("Round " + round + " complete — waiting for host to start round " + (round + 1));
+        } else {
+            lblTournamentRound.setText("Round " + round + " of " + total);
+        }
+
+        StringBuilder standingsText = new StringBuilder("<html>");
+        var standings = controller.getTournamentStandings();
+        if (!standings.isEmpty()) {
+            standingsText.append("<b>Standings:</b><br>");
+            int rank = 1;
+            for (var s : standings) {
+                standingsText.append(String.format("%d. %s  %d-%d  (OMW: %s)<br>",
+                        rank++, s.playerName(), s.wins(), s.losses(), s.omwPercent()));
+            }
+        }
+        standingsText.append("</html>");
+        lblTournamentStandings.setText(standingsText.toString());
+
+        StringBuilder pairingsText = new StringBuilder("<html>");
+        var pairings = controller.getTournamentPairings();
+        if (!pairings.isEmpty()) {
+            pairingsText.append("<b>").append(roundState == RoundState.COMPLETE ? "Last Round:" : "Current Round:").append("</b><br>");
+            for (var p : pairings) {
+                String status = switch (p.status()) {
+                    case ONGOING -> " [Spectate]";
+                    case COMPLETE -> " — " + p.winnerName() + " won";
+                    case BYE -> " — BYE";
+                };
+                pairingsText.append(p.playerAName()).append(" vs ").append(p.playerBName())
+                        .append(status).append("<br>");
+            }
+        }
+        pairingsText.append("</html>");
+        lblTournamentPairings.setText(pairingsText.toString());
+
+        tournamentPanel.add(lblTournamentTitle, "wrap");
+        tournamentPanel.add(lblTournamentRound, "wrap");
+        tournamentPanel.add(lblTournamentStandings, "gaptop 10, wrap");
+        tournamentPanel.add(lblTournamentPairings, "gaptop 10, wrap");
+
+        tournamentPanel.revalidate();
+        tournamentPanel.repaint();
+    }
+
+    void showTournamentResults(List<StandingView> standings, boolean cancelled) {
+        StringBuilder sb = new StringBuilder();
+        if (cancelled) {
+            sb.append("Tournament Cancelled\n\n");
+        } else {
+            sb.append("Tournament Complete!\n\n");
+        }
+        sb.append("Final Standings:\n");
+        int rank = 1;
+        for (var s : standings) {
+            sb.append(String.format("%d. %s — %dW-%dL (OMW: %s)\n",
+                    rank++, s.playerName(), s.wins(), s.losses(), s.omwPercent()));
+        }
+        FOptionPane.showMessageDialog(sb.toString(), "Tournament Results",
+                FSkin.getIcon(FSkinProp.ICO_INFORMATION));
+    }
+
+    void showSpectateView(String matchId) {
+        FOptionPane.showMessageDialog("Now spectating match", "Spectator Mode",
+                FSkin.getIcon(FSkinProp.ICO_INFORMATION));
+    }
+
     void updateRightPanelForMode() {
         decksFrame.removeAll();
         if (!controller.isLimitedMode()) {
@@ -900,6 +1019,11 @@ public class VLobby implements ILobbyView {
         } else {
             eventRightPanel.removeAll();
             eventRightPanel.add(eventConfigPanel, "w 100%, growx, gapbottom 10px, wrap");
+
+            if (controller.isInTournament()) {
+                refreshTournamentPanel();
+                eventRightPanel.add(tournamentPanel, "w 100%, growx, gapbottom 10px, wrap");
+            }
 
             if (playerWithFocus < playerPanels.size() && lobby.mayEdit(playerWithFocus)) {
                 final FDeckChooser chooser = getDeckChooser(playerWithFocus);
@@ -921,6 +1045,7 @@ public class VLobby implements ILobbyView {
 
     void updateActionButtons() {
         final boolean isLimited = controller.isLimitedMode();
+        final boolean inTournament = controller.isInTournament();
 
         // Rebuild pnlStart layout
         pnlStart.removeAll();
@@ -928,18 +1053,33 @@ public class VLobby implements ILobbyView {
         if (lobby.hasControl()) {
             if (isLimited) {
                 pnlStart.setLayout(new MigLayout("insets 0, gap 0"));
-                final String label = (controller.getConfiguredFormat() == EventFormat.SEALED)
-                        ? localizer.getMessage("lblNetworkGeneratePools")
-                        : localizer.getMessage("lblNetworkStartDraft");
-                btnStartEvent.setText(label);
-                boolean isExistingEvent = controller.getActiveEventId() != null;
-                btnStartEvent.setEnabled(controller.getConfiguredFormat() != null && !isExistingEvent);
-                btnStartMatch.setEnabled(isExistingEvent);
                 final String eventBtn = "w " + EVENT_BTN_WIDTH + "px!, h " + EVENT_BTN_HEIGHT + "px!";
-                pnlStart.add(btnNewEvent, "cell 0 0, " + eventBtn + ", gapright 20");
-                pnlStart.add(btnStartEvent, "cell 1 0, " + eventBtn + ", gapright 20");
-                pnlStart.add(btnStartMatch, "cell 2 0, " + eventBtn);
-                pnlStart.add(gamesInMatchFrame, "cell 2 1, align center");
+
+                if (inTournament) {
+                    btnCancelTournament.setText("Cancel Tournament");
+                    pnlStart.add(btnCancelTournament, "cell 0 0, " + eventBtn + ", gapright 20");
+
+                    boolean allReady = lobby instanceof ServerGameLobby sgl
+                            && sgl.areAllHumansReadyForTournament();
+                    btnStartNextRound.setEnabled(allReady);
+                    pnlStart.add(btnStartNextRound, "cell 1 0, " + eventBtn);
+
+                    pnlStart.add(gamesInMatchFrame, "cell 0 1, align center");
+                } else {
+                    final String label = (controller.getConfiguredFormat() == EventFormat.SEALED)
+                            ? localizer.getMessage("lblNetworkGeneratePools")
+                            : localizer.getMessage("lblNetworkStartDraft");
+                    btnStartEvent.setText(label);
+                    boolean isExistingEvent = controller.getActiveEventId() != null;
+                    btnStartEvent.setEnabled(controller.getConfiguredFormat() != null && !isExistingEvent);
+                    btnStartMatch.setEnabled(isExistingEvent);
+                    btnStartTournament.setEnabled(isExistingEvent);
+                    pnlStart.add(btnNewEvent, "cell 0 0, " + eventBtn + ", gapright 20");
+                    pnlStart.add(btnStartEvent, "cell 1 0, " + eventBtn + ", gapright 20");
+                    pnlStart.add(btnStartMatch, "cell 2 0, " + eventBtn);
+                    pnlStart.add(btnStartTournament, "cell 3 0, " + eventBtn + ", gapleft 20");
+                    pnlStart.add(gamesInMatchFrame, "cell 2 1, align center");
+                }
             } else {
                 addConstructedStartControls();
             }
@@ -1016,6 +1156,34 @@ public class VLobby implements ILobbyView {
                 }
             }
         }
+
+        // The sealed/draft pool and the built deck share the same name, so the by-name
+        // restore above never fires a new selection event and the built deck would never
+        // be re-uploaded — the server keeps the raw pool (main=0). Re-push the built deck
+        // whenever the selected event deck has a populated Main and differs from the last
+        // one we uploaded. Content-based compare keeps this quiet on unrelated refreshes.
+        final Deck selectedDeck = chooser.getDeck();
+        final Deck lastUploaded = decks[playerWithFocus];
+        if (selectedDeck != null && hasMainDeck(selectedDeck)
+                && !sameDeckForUpload(selectedDeck, lastUploaded)) {
+            fireDeckChangeListener(playerWithFocus, selectedDeck);
+        }
+    }
+
+    private static boolean hasMainDeck(final Deck deck) {
+        return deck.getMain() != null && !deck.getMain().isEmpty();
+    }
+
+    private static boolean sameDeckForUpload(final Deck a, final Deck b) {
+        if (a == b) {
+            return true;
+        }
+        if (b == null || !a.getName().equals(b.getName())) {
+            return false;
+        }
+        final int aMain = a.getMain() == null ? 0 : a.getMain().countAll();
+        final int bMain = b.getMain() == null ? 0 : b.getMain().countAll();
+        return aMain == bMain;
     }
 
     /** Saves avatar prefs for players one and two. */

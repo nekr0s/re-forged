@@ -5,7 +5,7 @@ import java.util.List;
 
 import com.google.common.collect.Lists;
 
-import forge.player.GamePlayerUtil;
+import forge.ai.LobbyPlayerAi;
 
 @SuppressWarnings("serial")
 public class TournamentRoundRobin extends AbstractTournament {
@@ -26,6 +26,11 @@ public class TournamentRoundRobin extends AbstractTournament {
         this.playersInPairing = pairingAmount;
     }
 
+    public TournamentRoundRobin(List<TournamentPlayer> allPlayers) {
+        super(allPlayers.size() % 2 == 0 ? allPlayers.size() - 1 : allPlayers.size(), allPlayers);
+        initializeTournament();
+    }
+
     @Override
     public void generateActivePairings() {
         int numPlayers = this.remainingPlayers.size();
@@ -33,7 +38,7 @@ public class TournamentRoundRobin extends AbstractTournament {
 
         List<TournamentPlayer> roundPairings = Lists.newArrayList(this.remainingPlayers);
         if (numPlayers % 2 == 1) {
-            roundPairings.add(new TournamentPlayer(GamePlayerUtil.createAiPlayer("BYE", 0)));
+            roundPairings.add(new TournamentPlayer(new LobbyPlayerAi("BYE", null)));
             numPlayers++;
         }
 
@@ -76,7 +81,14 @@ public class TournamentRoundRobin extends AbstractTournament {
         finishMatch(pairing);
 
         if (!pairing.isBye()) {
-            for (TournamentPlayer tp : pairing.getPairedPlayers()) {
+            // Record that each player faced the other, so OMW (the opponent-match-win
+            // tiebreaker) has data. Byes (single-player pairings) don't count.
+            List<TournamentPlayer> paired = pairing.getPairedPlayers();
+            if (paired.size() >= 2) {
+                paired.get(0).addOpponentIndex(paired.get(1).getIndex());
+                paired.get(1).addOpponentIndex(paired.get(0).getIndex());
+            }
+            for (TournamentPlayer tp : paired) {
                 if (!tp.equals(pairing.getWinner())) {
                     tp.addLoss();
                 } else {

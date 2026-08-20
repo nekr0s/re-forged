@@ -17,18 +17,20 @@ public final class NetworkEventView implements Serializable {
     private final List<EventParticipant> participants;
     private final int pickTimerSeconds;
     private final String productDescription;
-    private final int numRounds;
+    private final int numDraftRounds;
+//    private final Map<Integer, String> activeMatchIds;
 
+    // Full constructor with tournament state and draft state
     public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
-                            List<EventParticipant> participants, int pickTimerSeconds,
-                            String productDescription, int numRounds) {
+            List<EventParticipant> participants, int pickTimerSeconds,
+            String productDescription, int numDraftRounds) {
         this.eventId = eventId;
         this.format = format;
         this.phase = phase;
         this.participants = List.copyOf(participants);
         this.pickTimerSeconds = pickTimerSeconds;
         this.productDescription = productDescription;
-        this.numRounds = numRounds;
+        this.numDraftRounds = numDraftRounds;
     }
 
     public String getEventId() { return eventId; }
@@ -37,5 +39,5 @@ public final class NetworkEventView implements Serializable {
     public List<EventParticipant> getParticipants() { return participants; }
     public int getPickTimerSeconds() { return pickTimerSeconds; }
     public String getProductDescription() { return productDescription; }
-    public int getNumRounds() { return numRounds; }
+    public int getNumDraftRounds() { return numDraftRounds; }
 }
