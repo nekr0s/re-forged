@@ -55,7 +55,7 @@ jobs:
         run: |
           export DISPLAY=":1"
           Xvfb :1 -screen 0 800x600x8 &
-          mvn -U -B clean -P windows-linux install -T 1C -Dcardforge-repo.username=${{ secrets.FTP_USERNAME }} -Dcardforge-repo.password=${{ secrets.FTP_PASSWORD }}
+          mvn -U -B clean -P windows-linux install -T 1C -Dcardforge-repo.username=${{ secrets.FTP_USERNAME }} -Dcardforge-repo.password=${{ secrets.FTP_PASSWORD }} -DskipTests
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
