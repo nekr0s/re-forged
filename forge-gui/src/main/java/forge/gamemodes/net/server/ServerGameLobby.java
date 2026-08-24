@@ -313,7 +313,7 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         if (realPlayers > draftStyle.podSize()) {
             netLog.warn("Cannot start draft — {} real players exceeds {} pod size",
                     realPlayers, draftStyle);
-            FServerManager.getInstance().broadcast(new MessageEvent(
+            FServerManager.getInstance().broadcast(MessageEvent.warning(
                     "Cannot start draft: " + draftStyle + " supports up to "
                             + draftStyle.podSize() + " players."));
             return null;
@@ -397,6 +397,14 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
     public synchronized void startTournament(int gamesPerMatch) {
         NetworkEvent event = getCurrentEvent();
         if (event == null) return;
+
+        long realPlayers = ServerTournamentController.realParticipants(event.getParticipants()).size();
+        if (realPlayers < 2) {
+            netLog.warn("Cannot start tournament — need at least 2 real players, have {}", realPlayers);
+            FServerManager.getInstance().broadcast(MessageEvent.warning(
+                    "Cannot start tournament: need at least 2 real players."));
+            return;
+        }
 
         for (EventParticipant p : event.getParticipants()) {
             if (p.isAI()) continue;
