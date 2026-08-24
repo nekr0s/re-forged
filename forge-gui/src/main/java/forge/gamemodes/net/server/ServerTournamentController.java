@@ -39,13 +39,29 @@ public class ServerTournamentController implements IHasForgeLog {
     private ScheduledFuture<?> pollTask;
     private boolean inStandby = false;
 
+    /**
+     * Participants that take part in the tournament: real seated players and
+     * host-added playable bots ({@code lobbySlotIndex >= 0}). Draft-pod padding
+     * AI fillers ({@code lobbySlotIndex == -1}) only draft and pass packs; they
+     * never play tournament matches.
+     */
+    public static List<EventParticipant> realParticipants(List<EventParticipant> participants) {
+        List<EventParticipant> out = new ArrayList<>();
+        for (EventParticipant ep : participants) {
+            if (ep.getLobbySlotIndex() >= 0) {
+                out.add(ep);
+            }
+        }
+        return out;
+    }
+
     public ServerTournamentController(ServerGameLobby lobby, NetworkEvent event) {
         this.lobby = lobby;
         this.event = event;
         this.server = FServerManager.getInstance();
 
         List<TournamentPlayer> players = new ArrayList<>();
-        for (EventParticipant ep : event.getParticipants()) {
+        for (EventParticipant ep : realParticipants(event.getParticipants())) {
             LobbyPlayer lobbyPlayer;
             if (ep.isHuman()) {
                 lobbyPlayer = GamePlayerUtil.getGuiPlayer(ep.getName(), -1, -1, false);
