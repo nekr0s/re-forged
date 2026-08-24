@@ -1,5 +1,6 @@
 package forge.gamemodes.net.draft;
 
+import forge.card.DraftOptions;
 import forge.deck.Deck;
 import forge.deck.DeckSection;
 import forge.gamemodes.limited.BoosterDraft;
@@ -260,6 +261,29 @@ public final class BoosterDraftHost implements IHasForgeLog {
             }
             return;
         }
+    }
+
+    /**
+     * Whether the pack should be kept for a second pick instead of passing.
+     * Double-pick (4P2) keeps the pack on even pick indices (the 1st of a pair)
+     * and passes on odd indices (the 2nd of a pair). All other modes pass every
+     * pick.
+     *
+     * @param mode             the draft's double-pick mode
+     * @param picksTakenFromPack cards already removed from this pack before the
+     *                          current pick (0-based pick index)
+     */
+    public static boolean keepPackForDoublePick(DraftOptions.DoublePick mode, int picksTakenFromPack) {
+        return mode == DraftOptions.DoublePick.ALWAYS && picksTakenFromPack % 2 == 0;
+    }
+
+    /**
+     * The next seat a pack travels to for a given pack number: odd packs pass
+     * right (+1), even packs pass left (-1) — MTG convention.
+     */
+    public static int nextSeat(int fromSeat, int podSize, int packNumber) {
+        int dir = (packNumber % 2 == 1) ? 1 : -1;
+        return ((fromSeat + dir) % podSize + podSize) % podSize;
     }
 
     /**
