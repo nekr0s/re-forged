@@ -181,11 +181,16 @@ public final class BoosterDraftHost implements IHasForgeLog {
         picksMadePerSeat[seatIndex]++;
         // Double-pick (4P2): the 1st card of a pair keeps the pack for a 2nd pick.
         boolean keepForDoublePick = keepPackForDoublePick(doublePickMode, picksTaken);
-        if (!Boolean.FALSE.equals(passPack) && !keepForDoublePick) {
+        boolean conspiracyKeep = Boolean.FALSE.equals(passPack);
+        if (!conspiracyKeep && !keepForDoublePick) {
             DraftPack passed = player.passPack();
             if (passed != null && !passed.isEmpty()) {
                 passToNext(seatIndex, passed);
             }
+        } else if (head != null && head.isEmpty()) {
+            // The kept pack is now empty (e.g. the last card of an odd-sized pack
+            // in a double-pick draft) — discard it so the round can end.
+            player.passPack();
         }
     }
 
