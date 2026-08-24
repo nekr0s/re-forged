@@ -85,7 +85,7 @@ public class ServerTournamentController implements IHasForgeLog {
     public synchronized void startTournament() {
         event.setPhase(EventPhase.TOURNAMENT_IN_PROGRESS);
         netLog.info("[Tournament] Tournament started — round 1 of {}", tournament.getTotalRounds());
-        List<String> playerNames = event.getParticipants().stream()
+        List<String> playerNames = realParticipants(event.getParticipants()).stream()
                 .map(EventParticipant::getName).collect(Collectors.toList());
         lobby.broadcastTournamentEvent(new TournamentStartEvent(event.getEventId(), playerNames, tournament.getTotalRounds()));
         startRoundMatches();

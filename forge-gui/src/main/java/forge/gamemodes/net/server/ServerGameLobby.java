@@ -12,6 +12,7 @@ import forge.gamemodes.match.HostedMatch;
 import forge.gamemodes.match.LobbySlot;
 import forge.gamemodes.match.LobbySlotType;
 import forge.gamemodes.net.draft.BoosterDraftHost;
+import forge.gamemodes.net.DraftStyle;
 import forge.gamemodes.net.EventFormat;
 import forge.gamemodes.net.EventParticipant;
 import forge.gamemodes.net.EventPhase;
@@ -34,8 +35,6 @@ import java.util.List;
 import java.util.Set;
 
 public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
-    private static final int DRAFT_POD_SIZE = 8;
-
     /** Returned by {@link #startDraftEvent} with the info the UI needs for overlay/log setup. */
     public record DraftStartResult(String[] names, boolean[] aiFlags, int hostSeatIndex, int totalPacks) {}
 
@@ -308,7 +307,19 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         if (event == null) return null;
 
         populateParticipants();
-        fillRemainingWithAI(DRAFT_POD_SIZE);
+
+        DraftStyle draftStyle = event.getDraftStyle();
+        int realPlayers = ServerTournamentController.realParticipants(event.getParticipants()).size();
+        if (realPlayers > draftStyle.podSize()) {
+            netLog.warn("Cannot start draft — {} real players exceeds {} pod size",
+                    realPlayers, draftStyle);
+            FServerManager.getInstance().broadcast(new MessageEvent(
+                    "Cannot start draft: " + draftStyle + " supports up to "
+                            + draftStyle.podSize() + " players."));
+            return null;
+        }
+
+        fillRemainingWithAI(draftStyle.podSize());
         shuffleSeatPositions();
 
         List<EventParticipant> participants = event.getParticipants();
@@ -320,6 +331,9 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         if (podSize != draft.getPodSize()) {
             draft.setPodSize(podSize);
         }
+        // Host's chosen format always wins over the set's recommended pod size /
+        // double-pick setting baked into the draft during product generation.
+        draft.setDoublePickDuringDraft(draftStyle.doublePick());
         Set<Integer> humanSeats = new HashSet<>();
         for (EventParticipant p : participants) {
             if (p.isHuman()) {
