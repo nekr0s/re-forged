@@ -11,6 +11,7 @@ import com.google.common.collect.Iterables;
 import forge.Singletons;
 import forge.deck.Deck;
 import forge.deck.DeckProxy;
+import forge.card.DraftOptions;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
 import forge.gamemodes.match.GameLobby;
@@ -321,6 +322,28 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
 
         NetworkEvent event = serverLobby.getCurrentEvent();
         if (event == null) return;
+
+        // Step 3b: For draft, choose the draft format (pod size / pick rule).
+        // The set's recommended double-pick mode pre-selects the default, but the
+        // host's explicit choice always wins.
+        DraftStyle draftStyle = DraftStyle.EIGHT_PLAYER_PICK_ONE;
+        if (isDraft && draft != null) {
+            String lbl8 = localizer.getMessage("lblNetworkDraftStyle8P1");
+            String lbl4 = localizer.getMessage("lblNetworkDraftStyle4P2");
+            boolean recommendPickTwo =
+                    draft.getDoublePickDuringDraft() == DraftOptions.DoublePick.ALWAYS;
+            String recTag = " (recommended)";
+            String[] formatOptions = recommendPickTwo
+                    ? new String[] { lbl4 + recTag, lbl8 }
+                    : new String[] { lbl8 + recTag, lbl4 };
+            String formatChoice = GuiChoose.oneOrNone(
+                    localizer.getMessage("lblNetworkDraftFormatPrompt"), formatOptions);
+            if (formatChoice == null) return;
+            draftStyle = formatChoice.startsWith(lbl4)
+                    ? DraftStyle.FOUR_PLAYER_PICK_TWO
+                    : DraftStyle.EIGHT_PLAYER_PICK_ONE;
+            event.setDraftStyle(draftStyle);
+        }
 
         // Step 4: Pick timer + disconnect grace period (draft only, combined prompt)
         int timerSeconds = event.getPickTimerSeconds();
