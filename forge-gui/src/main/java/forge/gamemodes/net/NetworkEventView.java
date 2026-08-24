@@ -9,7 +9,7 @@ import java.util.List;
  * state like the SealedCardPoolGenerator or BoosterDraftHost reference.
  */
 public final class NetworkEventView implements Serializable {
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
 
     private final String eventId;
     private final EventFormat format;
@@ -18,12 +18,13 @@ public final class NetworkEventView implements Serializable {
     private final int pickTimerSeconds;
     private final String productDescription;
     private final int numDraftRounds;
+    private final DraftStyle draftStyle;
 //    private final Map<Integer, String> activeMatchIds;
 
     // Full constructor with tournament state and draft state
     public NetworkEventView(String eventId, EventFormat format, EventPhase phase,
             List<EventParticipant> participants, int pickTimerSeconds,
-            String productDescription, int numDraftRounds) {
+            String productDescription, int numDraftRounds, DraftStyle draftStyle) {
         this.eventId = eventId;
         this.format = format;
         this.phase = phase;
@@ -31,6 +32,7 @@ public final class NetworkEventView implements Serializable {
         this.pickTimerSeconds = pickTimerSeconds;
         this.productDescription = productDescription;
         this.numDraftRounds = numDraftRounds;
+        this.draftStyle = draftStyle;
     }
 
     public String getEventId() { return eventId; }
@@ -40,4 +42,5 @@ public final class NetworkEventView implements Serializable {
     public int getPickTimerSeconds() { return pickTimerSeconds; }
     public String getProductDescription() { return productDescription; }
     public int getNumDraftRounds() { return numDraftRounds; }
+    public DraftStyle getDraftStyle() { return draftStyle; }
 }

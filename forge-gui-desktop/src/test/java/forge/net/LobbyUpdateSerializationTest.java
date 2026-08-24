@@ -3,6 +3,7 @@ package forge.net;
 import forge.ai.LobbyPlayerAi;
 import forge.deck.Deck;
 import forge.gamemodes.match.GameLobby.GameLobbyData;
+import forge.gamemodes.net.DraftStyle;
 import forge.gamemodes.net.EventFormat;
 import forge.gamemodes.net.EventParticipant;
 import forge.gamemodes.net.EventPhase;
@@ -56,7 +57,8 @@ public class LobbyUpdateSerializationTest {
         p.setDeck(new Deck());
 
         NetworkEventView view = new NetworkEventView("event-1", EventFormat.SEALED,
-                EventPhase.TOURNAMENT_IN_PROGRESS, List.of(p), 0, "product", 0);
+                EventPhase.TOURNAMENT_IN_PROGRESS, List.of(p), 0, "product", 0,
+                DraftStyle.EIGHT_PLAYER_PICK_ONE);
 
         ClientGameLobby lobby = new ClientGameLobby();
         lobby.getData().setEventView(view);
@@ -80,7 +82,8 @@ public class LobbyUpdateSerializationTest {
         p.setTournamentPlayer(new TournamentPlayer(new LobbyPlayerAi("Bob", null), 1));
 
         NetworkEventView view = new NetworkEventView("event-1", EventFormat.SEALED,
-                EventPhase.TOURNAMENT_IN_PROGRESS, List.of(p), 0, "product", 0);
+                EventPhase.TOURNAMENT_IN_PROGRESS, List.of(p), 0, "product", 0,
+                DraftStyle.EIGHT_PLAYER_PICK_ONE);
 
         NetworkEventView decoded = (NetworkEventView) roundTrip(view);
         Assert.assertEquals(decoded.getParticipants().get(0).getName(), "Bob");

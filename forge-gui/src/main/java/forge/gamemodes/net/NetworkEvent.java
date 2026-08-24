@@ -38,6 +38,7 @@ public final class NetworkEvent {
     private String productDescription;
     private LimitedPoolType poolType;
     private int numRounds = 3;
+    private DraftStyle draftStyle = DraftStyle.EIGHT_PLAYER_PICK_ONE;
     private SealedCardPoolGenerator sealedGenerator;
     private BoosterDraft draft;
     private TournamentRoundRobin tournament;
@@ -73,6 +74,8 @@ public final class NetworkEvent {
     public void setDraft(BoosterDraft draft) { this.draft = draft; }
     public int getNumRounds() { return numRounds; }
     public void setNumRounds(int numRounds) { this.numRounds = numRounds; }
+    public DraftStyle getDraftStyle() { return draftStyle; }
+    public void setDraftStyle(DraftStyle draftStyle) { this.draftStyle = draftStyle; }
     public void addParticipant(EventParticipant participant) {
         participants.add(participant);
     }
@@ -112,7 +115,7 @@ public final class NetworkEvent {
 
     public NetworkEventView toView() {
         return new NetworkEventView(eventId, format, phase,
-                participants, pickTimerSeconds, productDescription, numRounds);
+                participants, pickTimerSeconds, productDescription, numRounds, draftStyle);
     }
 
     /** An event id paired with its display label, e.g., for dialog-driven event selection. */
