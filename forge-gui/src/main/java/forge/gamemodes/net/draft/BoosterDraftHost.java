@@ -8,6 +8,7 @@ import forge.gamemodes.net.EventParticipant;
 import forge.gamemodes.net.EventPhase;
 import forge.gamemodes.net.NetworkEvent;
 import forge.gamemodes.limited.DraftPack;
+import forge.gamemodes.limited.IBoosterDraft;
 import forge.gamemodes.limited.LimitedPlayer;
 import forge.gamemodes.limited.LimitedPlayerAI;
 import forge.gamemodes.net.event.DraftAutoPickedEvent;
@@ -371,10 +372,30 @@ public final class BoosterDraftHost implements IHasForgeLog {
 
         for (int i = 0; i < players.size(); i++) {
             LimitedPlayer player = players.get(i);
-            if (player instanceof LimitedPlayerAI) continue;
-
             EventParticipant participant = EventParticipant.findBySeat(participants, i);
             if (participant == null) continue;
+
+            if (player instanceof LimitedPlayerAI ai) {
+                // Draft-filler seats (-1) don't play in the tournament — no deck needed.
+                if (participant.getLobbySlotIndex() < 0) continue;
+
+                // Playable bot: build a tournament deck from its drafted pool,
+                // mirroring the sealed path (ServerGameLobby.generateAndDistributeSealedPools).
+                if (ai.getDeck() == null || ai.getDeck().get(DeckSection.Sideboard) == null
+                        || ai.getDeck().get(DeckSection.Sideboard).isEmpty()) {
+                    netLog.warn("AI {} has empty drafted pool — skipping deck build",
+                            participant.getName());
+                    continue;
+                }
+                String landCode = IBoosterDraft.LAND_SET_CODE[0] != null
+                        ? IBoosterDraft.LAND_SET_CODE[0].getCode() : null;
+                Deck aiDeck = ai.buildDeck(landCode);
+                NetworkEvent.setEventTags(aiDeck, event);
+                participant.setDeck(aiDeck);
+                netLog.info("Built tournament deck for AI {} ({} cards)",
+                        participant.getName(), aiDeck.getMain().countAll());
+                continue;
+            }
 
             Deck pool = new Deck(player.getDeck(), NetworkEvent.poolNameFor(event));
             NetworkEvent.setEventTags(pool, event);
