@@ -398,7 +398,7 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         NetworkEvent event = getCurrentEvent();
         if (event == null) return;
 
-        long realPlayers = ServerTournamentController.realParticipants(event.getParticipants()).size();
+        int realPlayers = ServerTournamentController.realParticipants(event.getParticipants()).size();
         if (realPlayers < 2) {
             netLog.warn("Cannot start tournament — need at least 2 real players, have {}", realPlayers);
             FServerManager.getInstance().broadcast(MessageEvent.warning(
