@@ -421,6 +421,16 @@ public class BoosterDraft implements IBoosterDraft {
         return this.podSize;
     }
 
+    /** The current double-pick mode (null when never set — treat as NEVER). */
+    public DraftOptions.DoublePick getDoublePickDuringDraft() {
+        return doublePickDuringDraft;
+    }
+
+    /** Override the double-pick mode (e.g. from the host's chosen draft format). */
+    public void setDoublePickDuringDraft(DraftOptions.DoublePick mode) {
+        this.doublePickDuringDraft = mode;
+    }
+
     @Override
     public boolean isPileDraft() {
         return false;

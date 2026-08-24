@@ -56,6 +56,7 @@ public final class BoosterDraftHost implements IHasForgeLog {
     private final BoosterDraft draft;
     private final NetworkEvent event;
     private final List<EventParticipant> participants;
+    private final DraftOptions.DoublePick doublePickMode;
     private int currentPackNumber;  // 1-based round number — used to decide pass direction
     private int initialPackSize;    // pack size at start of current round, for pick-number display
     private volatile boolean finished;
@@ -87,6 +88,8 @@ public final class BoosterDraftHost implements IHasForgeLog {
         // Snapshot participants so a lobby-side repopulate after draft start
         // can't corrupt the host's running pod.
         this.participants = new ArrayList<>(event.getParticipants());
+        DraftOptions.DoublePick mode = draft.getDoublePickDuringDraft();
+        this.doublePickMode = mode != null ? mode : DraftOptions.DoublePick.NEVER;
         this.currentPackNumber = draft.getRound();
         this.finished = false;
         int podSize = draft.getAllPlayers().size();
@@ -172,9 +175,13 @@ public final class BoosterDraftHost implements IHasForgeLog {
      * {@code false}, meaning the picker keeps the pack for another pick.
      */
     private void applyPickAndPass(LimitedPlayer player, int seatIndex, PaperCard card) {
+        DraftPack head = player.nextChoice();
+        int picksTaken = head == null ? 0 : initialPackSize - head.size();
         Boolean passPack = player.draftCard(card, DeckSection.Sideboard);
         picksMadePerSeat[seatIndex]++;
-        if (!Boolean.FALSE.equals(passPack)) {
+        // Double-pick (4P2): the 1st card of a pair keeps the pack for a 2nd pick.
+        boolean keepForDoublePick = keepPackForDoublePick(doublePickMode, picksTaken);
+        if (!Boolean.FALSE.equals(passPack) && !keepForDoublePick) {
             DraftPack passed = player.passPack();
             if (passed != null && !passed.isEmpty()) {
                 passToNext(seatIndex, passed);
@@ -266,8 +273,9 @@ public final class BoosterDraftHost implements IHasForgeLog {
     /**
      * Whether the pack should be kept for a second pick instead of passing.
      * Double-pick (4P2) keeps the pack on even pick indices (the 1st of a pair)
-     * and passes on odd indices (the 2nd of a pair). All other modes pass every
-     * pick.
+     * and passes on odd indices (the 2nd of a pair). The network host only uses
+     * NEVER and ALWAYS; FIRST_PICK (not supported online) deliberately behaves
+     * as pass-every-pick.
      *
      * @param mode             the draft's double-pick mode
      * @param picksTakenFromPack cards already removed from this pack before the
@@ -292,9 +300,7 @@ public final class BoosterDraftHost implements IHasForgeLog {
      */
     private void passToNext(int fromSeat, DraftPack pack) {
         int podSize = draft.getAllPlayers().size();
-        int dir = (currentPackNumber % 2 == 1) ? 1 : -1;
-        int nextSeat = ((fromSeat + dir) % podSize + podSize) % podSize;
-        draft.getAllPlayers().get(nextSeat).receiveOpenedPack(pack);
+        draft.getAllPlayers().get(nextSeat(fromSeat, podSize, currentPackNumber)).receiveOpenedPack(pack);
     }
 
     private void captureInitialPackSize() {
