@@ -801,6 +801,12 @@ public class ComputerUtilMana {
             manapool.refundMana(manaSpentToPay);
             if (test) {
                 resetPayment(paymentList);
+                // TODO should probably only record when canPlayAndPayFor
+                // TODO doesn't count multiple copies filtered by dedupeCards
+                Set<ManaCostBeingPaid> unpaid = AiCardMemory.getMemorySet(ai, AiCardMemory.MemorySetMana.UNPAID_COSTS);
+                if (unpaid != null) {
+                    unpaid.add(cost);
+                }
             } else {
                 System.out.println("ComputerUtilMana: payManaCost() cost was not paid for " + sa + " (" +  sa.getHostCard().getName() + "). Didn't find what to pay for " + toPay);
                 sa.setSkip(true);
