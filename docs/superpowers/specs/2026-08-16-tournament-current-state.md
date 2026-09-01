@@ -238,6 +238,11 @@ subscribes to the match's event stream.
 4. The original spec's between-round standby with ready/AFK countdown (see Gap 7) can wait —
    spectate only applies during `ROUND`/`ACTIVE` play.
 
+> **Status: RESOLVED 2026-09-01** — implemented per the design doc
+> `docs/superpowers/specs/2026-09-01-online-tournament-spectate-design.md`. Left as known
+> limitations for a future phase: concurrent spectating while playing your own match,
+> server-side hand filtering on the wire, reconnect-while-spectating, and mobile spectate UI.
+
 ### Gap 6 — Dead code & unfulfilled "auto-continue"
 
 - The server-side `NetworkTournamentWinLose` (`forge-gui/.../net/server/`) — `determineNextAction()`
@@ -535,9 +540,12 @@ host-refresh half vs. the tournament's network-only half — is the entire bug.
 6. ~~**Gap 9** — headless end-to-end tournament test.~~ **Done 2026-09-01** —
    `TournamentEndToEndTest` runs a full 4-player best-of-1 round-robin to completion and
    asserts the event chain + final standings.
-7. **Gap 5** — complete the client side of spectating. Scope decided (2026-09-01): lobby-only
-   spectating with client-side hidden hands. Remaining work: clickable `[Spectate]` button,
-   per-match GUI routing on the client, open/leave spectator view, and the hidden-hands
-   spectator flag.
+7. ~~**Gap 5** — complete the client side of spectating.~~ **Done 2026-09-01** — lobby-only
+   spectating with client-side hidden hands: Ongoing Matches list + Spectate button in the
+   tournament panel, spectator mode on the shared client GUI (armed from `openView`
+   `myPlayers` null-ness), hidden-hands `mayView`/`mayFlip`, server guards + `"spectate:"`
+   key convention + leave teardown, Game-menu "Stop Spectating", WinLose suppression, and a
+   headless e2e (`SpectateEndToEndTest`). See
+   `docs/superpowers/specs/2026-09-01-online-tournament-spectate-design.md`.
 8. **Gap 6/Gap 7** — clean up dead code, document the manual-continue and host-controlled
    standby choices.
