@@ -113,13 +113,18 @@ final class GameClientHandler extends GameProtocolHandler<IGuiGame> implements I
                 // MatchStartedEvent (which the server sends after openView) re-arms it
                 // for tournament matches, so WinLose selection is correct per match.
                 gui.setTournamentMatch(false);
+                // Self-synchronizing spectator mode: an openView with no local players
+                // is a spectator view; one with local players is the client's own match.
                 final TrackableCollection<PlayerView> myPlayers = (TrackableCollection<PlayerView>) args[0];
-                for (PlayerView myPlayer : myPlayers) {
-                    if (myPlayer.getTracker() == null) {
-                        myPlayer.setTracker(this.tracker);
+                gui.setSpectatorMode(myPlayers == null);
+                if (myPlayers != null) {
+                    for (PlayerView myPlayer : myPlayers) {
+                        if (myPlayer.getTracker() == null) {
+                            myPlayer.setTracker(this.tracker);
+                        }
                     }
+                    client.setGameControllers(myPlayers);
                 }
-                client.setGameControllers(myPlayers);
                 break;
             default:
                 break;

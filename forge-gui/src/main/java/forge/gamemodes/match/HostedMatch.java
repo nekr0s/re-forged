@@ -394,6 +394,11 @@ public class HostedMatch {
         final forge.gamemodes.net.server.WatchRemoteGame spectatorController =
             new forge.gamemodes.net.server.WatchRemoteGame(game, null, gui);
         gui.setSpectator(spectatorController);
+        // Give the spectator GUI the current game view before openView so its
+        // sendFullState() ships a setGameView to the client (mirrors the player
+        // path in startGame). Without this the spectator's client GUI never
+        // receives a GameView and drops the whole delta stream.
+        gui.setGameView(game.getView());
         gui.openView(null);
 
         // Create a GameEventForwarder to push events to the remote client
