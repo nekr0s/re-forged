@@ -82,18 +82,33 @@ public class TournamentRoundRobin extends AbstractTournament {
 
         if (!pairing.isBye()) {
             // Record that each player faced the other, so OMW (the opponent-match-win
-            // tiebreaker) has data. Byes (single-player pairings) don't count.
+            // tiebreaker) has data. Byes (single-player pairings) don't count, and
+            // voided pairings never actually took place, so they don't either.
             List<TournamentPlayer> paired = pairing.getPairedPlayers();
-            if (paired.size() >= 2) {
+            if (paired.size() >= 2 && pairing.getResult() != TournamentPairing.MatchResult.VOID) {
                 paired.get(0).addOpponentIndex(paired.get(1).getIndex());
                 paired.get(1).addOpponentIndex(paired.get(0).getIndex());
             }
-            for (TournamentPlayer tp : paired) {
-                if (!tp.equals(pairing.getWinner())) {
-                    tp.addLoss();
-                } else {
-                    tp.addWin();
-                }
+            switch (pairing.getResult()) {
+                case DRAW:
+                    for (TournamentPlayer tp : paired) {
+                        tp.addTie();
+                    }
+                    break;
+                case VOID:
+                    // No points to anyone.
+                    break;
+                case WIN:
+                case PENDING:
+                default:
+                    for (TournamentPlayer tp : paired) {
+                        if (!tp.equals(pairing.getWinner())) {
+                            tp.addLoss();
+                        } else {
+                            tp.addWin();
+                        }
+                    }
+                    break;
             }
         }
 

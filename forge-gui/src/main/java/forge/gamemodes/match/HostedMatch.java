@@ -66,12 +66,32 @@ public class HostedMatch {
     private final MatchUiEventVisitor visitor = new MatchUiEventVisitor();
     private final Map<PlayerControllerHuman, NextGameDecision> nextGameDecisions = Maps.newHashMap();
     private boolean isMatchOver = false;
+    private boolean tournamentMatch = false;
     public int subGameCount = 0;
 
     public HostedMatch() {}
 
     public String getMatchId() {
         return matchId;
+    }
+
+    /**
+     * Mark this match (and its GUIs) as a tournament match so the WinLose screen
+     * selects the tournament controller instead of the generic limited one.
+     */
+    public void setTournamentMatch(final boolean tournamentMatch) {
+        this.tournamentMatch = tournamentMatch;
+        if (guis != null) {
+            for (final IGuiGame gui : guis.values()) {
+                if (gui != null) {
+                    gui.setTournamentMatch(tournamentMatch);
+                }
+            }
+        }
+    }
+
+    public boolean isTournamentMatch() {
+        return tournamentMatch;
     }
 
     public void setStartGameHook(Runnable hook) {

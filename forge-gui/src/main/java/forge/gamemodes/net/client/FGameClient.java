@@ -52,7 +52,7 @@ public class FGameClient implements IToServer, IHasForgeLog {
         return username;
     }
 
-    final IGuiGame getGui() {
+    public IGuiGame getGui() {
         return clientGui;
     }
     final ReplyPool getReplyPool() {

@@ -972,6 +972,8 @@ public class VLobby implements ILobbyView, IHasForgeLog {
                     case ONGOING -> " [Spectate]";
                     case COMPLETE -> " — " + p.winnerName() + " won";
                     case BYE -> " — BYE";
+                    case DRAW -> " — Draw";
+                    case VOID -> " — Void";
                 };
                 pairingsText.append(p.playerAName()).append(" vs ").append(p.playerBName())
                         .append(status).append("<br>");

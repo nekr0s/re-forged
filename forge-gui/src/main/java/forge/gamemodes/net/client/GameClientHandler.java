@@ -109,6 +109,10 @@ final class GameClientHandler extends GameProtocolHandler<IGuiGame> implements I
                 break;
             case openView:
                 gui.setNetGame();
+                // A new match's view resets any tournament flag from a previous match;
+                // MatchStartedEvent (which the server sends after openView) re-arms it
+                // for tournament matches, so WinLose selection is correct per match.
+                gui.setTournamentMatch(false);
                 final TrackableCollection<PlayerView> myPlayers = (TrackableCollection<PlayerView>) args[0];
                 for (PlayerView myPlayer : myPlayers) {
                     if (myPlayer.getTracker() == null) {

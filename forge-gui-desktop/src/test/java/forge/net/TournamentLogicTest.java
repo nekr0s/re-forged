@@ -294,6 +294,73 @@ public class TournamentLogicTest {
     }
 
     /**
+     * Gap 8: a pairing marked as a DRAW (the match ended with no winner) must
+     * award a tie to every player — never a silent win for player A.
+     */
+    @Test
+    public void testDrawPairingAwardsTiesToBothPlayers() {
+        TournamentPlayer p0 = new TournamentPlayer(new LobbyPlayerAi("P0", null), 0);
+        TournamentPlayer p1 = new TournamentPlayer(new LobbyPlayerAi("P1", null), 1);
+        TournamentPairing pairing = new TournamentPairing(1, Arrays.asList(p0, p1));
+        pairing.markDraw();
+
+        TournamentRoundRobin rr = new TournamentRoundRobin(3, Arrays.asList(p0, p1));
+        rr.reportMatchCompletion(pairing);
+
+        Assert.assertEquals(p0.getTies(), 1, "Player 0 should have 1 tie");
+        Assert.assertEquals(p1.getTies(), 1, "Player 1 should have 1 tie");
+        Assert.assertEquals(p0.getWins(), 0, "A draw must not award a win");
+        Assert.assertEquals(p0.getLosses(), 0, "A draw must not award a loss");
+        Assert.assertEquals(p0.getScore(), 1, "A tie is worth 1 point");
+        Assert.assertNull(pairing.getWinner(), "A draw has no winner");
+        Assert.assertTrue(pairing.isDraw());
+    }
+
+    /**
+     * Gap 8: a VOID pairing (e.g. both players AWOL, or a desync) must award no
+     * points and record no opponents — never a silent win for player A.
+     */
+    @Test
+    public void testVoidPairingAwardsNoPointsAndNoOpponents() {
+        TournamentPlayer p0 = new TournamentPlayer(new LobbyPlayerAi("P0", null), 0);
+        TournamentPlayer p1 = new TournamentPlayer(new LobbyPlayerAi("P1", null), 1);
+        TournamentPairing pairing = new TournamentPairing(1, Arrays.asList(p0, p1));
+        pairing.markVoid();
+
+        TournamentRoundRobin rr = new TournamentRoundRobin(3, Arrays.asList(p0, p1));
+        rr.reportMatchCompletion(pairing);
+
+        Assert.assertEquals(p0.getWins(), 0, "Void must not award a win");
+        Assert.assertEquals(p0.getLosses(), 0, "Void must not award a loss");
+        Assert.assertEquals(p0.getTies(), 0, "Void must not award a tie");
+        Assert.assertEquals(p0.getScore(), 0, "Void awards no points");
+        Assert.assertTrue(p0.getPreviousOpponents().isEmpty(), "Void must not record opponents for OMW");
+        Assert.assertNull(pairing.getWinner());
+        Assert.assertTrue(pairing.isVoid());
+    }
+
+    /**
+     * Gap 8 regression: a normal WIN pairing still awards win/loss and records
+     * opponents, so existing standings/OMW behavior is preserved.
+     */
+    @Test
+    public void testWinPairingStillAwardsWinAndLoss() {
+        TournamentPlayer p0 = new TournamentPlayer(new LobbyPlayerAi("P0", null), 0);
+        TournamentPlayer p1 = new TournamentPlayer(new LobbyPlayerAi("P1", null), 1);
+        TournamentPairing pairing = new TournamentPairing(1, Arrays.asList(p0, p1));
+        pairing.setWinner(p0);
+
+        TournamentRoundRobin rr = new TournamentRoundRobin(3, Arrays.asList(p0, p1));
+        rr.reportMatchCompletion(pairing);
+
+        Assert.assertEquals(p0.getWins(), 1, "Winner should get a win");
+        Assert.assertEquals(p1.getLosses(), 1, "Loser should get a loss");
+        Assert.assertEquals(p0.getTies(), 0);
+        Assert.assertEquals(p1.getPreviousOpponents().size(), 1, "Opponents should be recorded for OMW");
+        Assert.assertEquals(pairing.getResult(), TournamentPairing.MatchResult.WIN);
+    }
+
+    /**
      * Regression test for Bug 3: completing a match via
      * {@link TournamentRoundRobin#reportMatchCompletion} must record opponent
      * indices so OMW (the opponent-match-win tiebreaker) is non-zero. Previously

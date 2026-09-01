@@ -2,6 +2,7 @@ package forge.gamemodes.net.server;
 
 import forge.deck.CardPool;
 import forge.deck.Deck;
+import forge.deck.DeckFormat;
 import forge.deck.DeckSection;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
@@ -389,8 +390,10 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
     }
 
     /**
-     * Start a tournament for the current event.
-     * Requires that all participants have built decks and are ready.
+     * Start a round-robin tournament for the current event.
+     * Never fails silently: every ready/deck/legality problem is collected, shown
+     * to the host (with an Ignore/Cancel affordance for illegal decks) and
+     * broadcast to the lobby so all players know why the tournament didn't start.
      *
      * @param gamesPerMatch 1, 3, or 5
      */
@@ -406,47 +409,85 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
             return;
         }
 
+        // Ready/deck gate: humans must be ready with a finished deck. AI bots are
+        // skipped (they are auto-decked during pool generation).
+        final List<String> startProblems = new ArrayList<>();
         for (EventParticipant p : event.getParticipants()) {
             if (p.isAI()) continue;
             LobbySlot slot = getSlot(p.getLobbySlotIndex());
-            if (slot != null && !slot.isReady()) {
-                netLog.warn("Cannot start tournament: {} is not ready", p.getName());
-                return;
+            if (slot == null) continue;
+            String problem = startProblemFor(p.getName(), slot.isReady(), slot.getDeck());
+            if (problem != null) {
+                startProblems.add(problem);
             }
-            if (slot != null && slot.getDeck() == null) {
-                netLog.warn("Cannot start tournament: {} has no deck", p.getName());
-                FServerManager.getInstance().broadcast(new MessageEvent(
-                        "Cannot start tournament: " + p.getName() + " has no deck."));
-                return;
+        }
+
+        // Deck-legality gate: limited format, for every participant (AI included).
+        // Because decks are frozen for the whole tournament, one check at start
+        // covers every round.
+        final boolean checkLegality = FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.ENFORCE_DECK_LEGALITY);
+        final List<String> legalityProblems = new ArrayList<>();
+        if (checkLegality) {
+            for (EventParticipant p : event.getParticipants()) {
+                LobbySlot slot = getSlot(p.getLobbySlotIndex());
+                if (slot == null) continue;
+                Deck deck = p.getDeck() != null ? p.getDeck() : slot.getDeck();
+                String problem = legalityProblemFor(p.getName(), deck);
+                if (problem != null) {
+                    legalityProblems.add(problem);
+                }
             }
-            if (slot != null && slot.getDeck() != null
-                    && (slot.getDeck().getMain() == null || slot.getDeck().getMain().isEmpty())) {
-                netLog.warn("Cannot start tournament: {} has an empty deck (pool not built into Main)", p.getName());
-                FServerManager.getInstance().broadcast(new MessageEvent(
-                        "Cannot start tournament: " + p.getName() + " has not finished building their deck."));
+        }
+
+        if (!startProblems.isEmpty()) {
+            String msg = "Cannot start tournament:\n" + String.join("\n", startProblems);
+            netLog.warn(msg);
+            FServerManager.getInstance().broadcast(MessageEvent.warning(msg));
+            return;
+        }
+
+        if (!legalityProblems.isEmpty()) {
+            if (!confirmIgnoreDeckLegality(legalityProblems)) {
+                FServerManager.getInstance().broadcast(MessageEvent.warning(
+                        "Tournament not started: some decks are not legal."));
                 return;
             }
         }
 
-        final boolean checkLegality = FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.ENFORCE_DECK_LEGALITY);
-        final List<String> legalityProblems = new ArrayList<>();
-
-        //Auto-generated decks don't need to be checked here
-        //Commander deck replaces regular deck and is checked later
-//        if (checkLegality && autoGenerateVariant == null) {
-//            final DeckFormat deckFormat = data.isLimitedMode() ? DeckFormat.Limited : GameType.Constructed.getDeckFormat();
-//            for (final LobbySlot slot : activeSlots) {
-//                final String name = slot.getName();
-//                final String errMsg = deckFormat.getDeckConformanceProblem(slot.getDeck());
-//                if (null != errMsg) {
-//                    legalityProblems.add(legalityProblemEntry(name, errMsg));
-//                }
-//            }
-//        }
-
-        tournamentController = new ServerTournamentController(this, event);
+        tournamentController = new ServerTournamentController(this, event, gamesPerMatch);
         tournamentController.startTournament();
         netLog.info("Tournament started — gamesPerMatch={}", gamesPerMatch);
+    }
+
+    /**
+     * One human-readable ready/deck problem line for a tournament participant's
+     * slot, or {@code null} if the slot is ready to play. Pure — no UI, no server
+     * state — so the gate can be unit-tested.
+     */
+    public static String startProblemFor(final String name, final boolean isReady, final Deck deck) {
+        if (!isReady) {
+            return name + " is not ready";
+        }
+        if (deck == null) {
+            return name + " has no deck";
+        }
+        if (deck.getMain() == null || deck.getMain().isEmpty()) {
+            return name + " has not finished building their deck";
+        }
+        return null;
+    }
+
+    /**
+     * A Limited-format deck-legality problem line for a participant, or {@code null}
+     * if the deck is legal. Reuses the legacy {@link GameLobby} formatting so the
+     * tournament gate presents the same problems as the normal start-game path.
+     */
+    public static String legalityProblemFor(final String name, final Deck deck) {
+        if (deck == null) {
+            return null;
+        }
+        final String errMsg = DeckFormat.Limited.getDeckConformanceProblem(deck);
+        return errMsg != null ? legalityProblemEntry(name, errMsg) : null;
     }
 
     /**

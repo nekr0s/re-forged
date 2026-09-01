@@ -14,6 +14,7 @@ import forge.deck.DeckProxy;
 import forge.card.DraftOptions;
 import forge.gamemodes.limited.BoosterDraft;
 import forge.gamemodes.limited.LimitedPoolType;
+import forge.gamemodes.match.AbstractGuiGame;
 import forge.gamemodes.match.GameLobby;
 import forge.gamemodes.match.LobbySlot;
 import forge.gamemodes.net.*;
@@ -617,6 +618,13 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
     @Override
     public void onMatchStarted(MatchStartedEvent event) {
         currentRoundState = RoundState.ACTIVE;
+        // A tournament match is starting: mark the shared client GUI so the WinLose
+        // screen picks the tournament controller. The host's own GUI is marked via
+        // HostedMatch.setTournamentMatch instead (there is no FGameClient on the host).
+        FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
+        if (client != null && client.getGui() instanceof AbstractGuiGame agg) {
+            agg.setTournamentMatch(true);
+        }
         SwingUtilities.invokeLater(view::updateRightPanelForMode);
     }
 

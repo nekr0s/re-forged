@@ -77,8 +77,7 @@ public class ViewWinLose implements IWinLoseView<FButton> {
         // Control of the win/lose is handled differently for various game
         // modes.
         ControlWinLose control = null;
-        if (matchUI.isNetGame() && (game0.getGameType() == forge.game.GameType.Sealed
-                || game0.getGameType() == forge.game.GameType.Draft)) {
+        if (matchUI.isNetGame() && matchUI.isTournamentMatch()) {
             control = new NetworkTournamentWinLose(this, game0, matchUI);
         } else switch (game0.getGameType()) {
             case Quest:

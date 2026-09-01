@@ -312,4 +312,8 @@ public interface IGuiGame {
     /** Returns true if this game instance is a network game. */
     boolean isNetGame();
     void setNetGame();
+
+    /** True while the current match is a tournament match (drives WinLose selection). */
+    boolean isTournamentMatch();
+    void setTournamentMatch(boolean tournamentMatch);
 }

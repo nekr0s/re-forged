@@ -46,6 +46,7 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
     private String daytime = null;
     private boolean ignoreConcedeChain = false;
     private boolean networkGame = false;
+    private boolean tournamentMatch = false;
 
     private Timer waitingTimer;
     private long waitingStartTime;
@@ -57,6 +58,15 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
     @Override
     public void setNetGame() {
         networkGame = true;
+    }
+
+    @Override
+    public boolean isTournamentMatch() {
+        return tournamentMatch;
+    }
+    @Override
+    public void setTournamentMatch(final boolean tournamentMatch) {
+        this.tournamentMatch = tournamentMatch;
     }
 
     public final boolean hasLocalPlayers() {

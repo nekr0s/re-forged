@@ -32,6 +32,7 @@ public class ServerTournamentController implements IHasForgeLog {
     private final NetworkEvent event;
     private final TournamentRoundRobin tournament;
     private final FServerManager server;
+    private final int gamesPerMatch;
 
     private final Map<String, HostedMatch> trackedMatches = new ConcurrentHashMap<>();
     private final Map<String, TournamentPairing> matchToPairing = new ConcurrentHashMap<>();
@@ -55,10 +56,11 @@ public class ServerTournamentController implements IHasForgeLog {
         return out;
     }
 
-    public ServerTournamentController(ServerGameLobby lobby, NetworkEvent event) {
+    public ServerTournamentController(ServerGameLobby lobby, NetworkEvent event, int gamesPerMatch) {
         this.lobby = lobby;
         this.event = event;
         this.server = FServerManager.getInstance();
+        this.gamesPerMatch = gamesPerMatch;
 
         List<TournamentPlayer> players = new ArrayList<>();
         for (EventParticipant ep : realParticipants(event.getParticipants())) {
@@ -166,9 +168,7 @@ public class ServerTournamentController implements IHasForgeLog {
             return;
         }
 
-        GameType gameType = event.getFormat() == EventFormat.SEALED
-                ? GameType.Sealed
-                : GameType.Constructed;
+        GameType gameType = gameTypeFor(event.getFormat());
 
         netLog.info("[Tournament] Starting match: {})", formatPairing(pairing));
 
@@ -186,6 +186,14 @@ public class ServerTournamentController implements IHasForgeLog {
             trackedMatches.put(matchId, match);
             matchToPairing.put(matchId, pairing);
             pairingToMatchId.put(pairing, matchId);
+
+            // Gap 2: best-of-N is tournament-scoped, not the global UI_MATCHES_PER_GAME default.
+            if (match.getMatch() != null) {
+                match.getMatch().getRules().setGamesPerMatch(gamesPerMatch);
+                netLog.info("[Tournament] Match {} set to best-of-{}", matchId, gamesPerMatch);
+            }
+            // Gap 4: mark the match so the host's WinLose screen picks the tournament controller.
+            match.setTournamentMatch(true);
 
             netLog.info("[Tournament] Match started — matchId={}, round={}", matchId, tournament.getActiveRound());
 
@@ -208,6 +216,23 @@ public class ServerTournamentController implements IHasForgeLog {
             }
         }
         return null;
+    }
+
+    /**
+     * The {@link GameType} a tournament match of the given event format runs as.
+     * Both limited formats (draft and sealed) keep their limited {@code GameType}
+     * so deck semantics and WinLose handling match; anything else falls back to
+     * Constructed.
+     */
+    public static GameType gameTypeFor(EventFormat format) {
+        if (format == null) {
+            return GameType.Constructed;
+        }
+        return switch (format) {
+            case SEALED -> GameType.Sealed;
+            case BOOSTER_DRAFT -> GameType.Draft;
+            default -> GameType.Constructed;
+        };
     }
 
     private EventParticipant findParticipant(TournamentPlayer tp) {
@@ -298,26 +323,54 @@ public class ServerTournamentController implements IHasForgeLog {
             return;
         }
 
-        if (match != null && match.getMatch() != null) {
-            RegisteredPlayer winner = match.getMatch().getWinner();
-            if (winner != null) {
-                String winnerName = winner.getPlayer().getName();
-                for (TournamentPlayer tp : pairedPlayers) {
-                    if (tp.getPlayer().getName().equals(winnerName)) {
-                        pairing.setWinner(tp);
-                        netLog.info("[Tournament] Winner determined by match outcome: {}", winnerName);
-                        return;
-                    }
-                }
-                netLog.warn("[Tournament] Match winner '{}' not found in pairing players, falling back to first player", winnerName);
-            } else {
-                netLog.warn("[Tournament] Match.getWinner() returned null, falling back to first player");
-            }
-        } else {
-            netLog.warn("[Tournament] Match or match.getMatch() was null, falling back to first player");
+        if (match == null || match.getMatch() == null) {
+            pairing.markVoid();
+            netLog.warn("[Tournament] Match or match.getMatch() was null — VOID (no points awarded)");
+            return;
         }
 
-        pairing.setWinner(pairedPlayers.get(0));
+        RegisteredPlayer winner = match.getMatch().getWinner();
+        LobbyPlayer winnerPlayer = winner != null ? winner.getPlayer() : null;
+        TournamentPairing.MatchResult result = resolveMatchOutcome(pairing, winnerPlayer);
+        switch (result) {
+            case WIN:
+                netLog.info("[Tournament] Winner determined by match outcome: {}", winnerPlayer.getName());
+                break;
+            case DRAW:
+                netLog.warn("[Tournament] Match ended with no winner (draw) — recording a tie");
+                break;
+            case VOID:
+                netLog.error("[Tournament] Match winner '{}' not found among pairing players — VOID (no points awarded)",
+                        winnerPlayer == null ? "null" : winnerPlayer.getName());
+                break;
+            default:
+                break;
+        }
+    }
+
+    /**
+     * Maps a match outcome onto a pairing's result. Never awards a win silently:
+     * a null winner (draw) becomes a tie for all players; a winner whose name
+     * matches no paired player (a desync) voids the pairing rather than handing
+     * the match to the first player.
+     *
+     * @param pairing the pairing to mutate
+     * @param matchWinner the match's winning lobby player, or null for a draw
+     * @return the resolved {@link TournamentPairing.MatchResult}
+     */
+    public static TournamentPairing.MatchResult resolveMatchOutcome(TournamentPairing pairing, LobbyPlayer matchWinner) {
+        if (matchWinner == null) {
+            pairing.markDraw();
+            return TournamentPairing.MatchResult.DRAW;
+        }
+        for (TournamentPlayer tp : pairing.getPairedPlayers()) {
+            if (tp.getPlayer().getName().equals(matchWinner.getName())) {
+                pairing.setWinner(tp);
+                return TournamentPairing.MatchResult.WIN;
+            }
+        }
+        pairing.markVoid();
+        return TournamentPairing.MatchResult.VOID;
     }
 
     private void onTournamentComplete() {
@@ -390,9 +443,17 @@ public class ServerTournamentController implements IHasForgeLog {
         String playerA = !players.isEmpty() ? players.get(0).getPlayer().getName() : "?";
         String playerB = players.size() > 1 ? players.get(1).getPlayer().getName() : "?";
         String winner = pairing.getWinner() != null ? pairing.getWinner().getPlayer().getName() : null;
-        PairingView.PairingStatus status = pairing.isBye()
-                ? PairingView.PairingStatus.BYE
-                : (winner != null ? PairingView.PairingStatus.COMPLETE : PairingView.PairingStatus.ONGOING);
+        PairingView.PairingStatus status;
+        if (pairing.isBye()) {
+            status = PairingView.PairingStatus.BYE;
+        } else {
+            status = switch (pairing.getResult()) {
+                case DRAW -> PairingView.PairingStatus.DRAW;
+                case VOID -> PairingView.PairingStatus.VOID;
+                case WIN -> PairingView.PairingStatus.COMPLETE;
+                default -> PairingView.PairingStatus.ONGOING;
+            };
+        }
         String matchId = pairingToMatchId.get(pairing);
         return new PairingView(playerA, playerB, matchId, status, winner);
     }
