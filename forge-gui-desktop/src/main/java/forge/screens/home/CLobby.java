@@ -80,6 +80,7 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
     private RoundState currentRoundState = RoundState.NONE;
     private List<PairingView> tournamentPairings = List.of();
     private List<StandingView> tournamentStandings = List.of();
+    private String spectatingMatchId = null;
 
     public CLobby(final VLobby view) {
         this.view = view;
@@ -624,6 +625,11 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
         FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
         if (client != null && client.getGui() instanceof AbstractGuiGame agg) {
             agg.setTournamentMatch(true);
+            // Own match starting ends any spectate (the server cleaned it up). Keep the
+            // id only if still in spectator mode (a guest watching others' matches).
+            if (spectatingMatchId != null && !agg.isSpectatorMode()) {
+                spectatingMatchId = null;
+            }
         }
         SwingUtilities.invokeLater(view::updateRightPanelForMode);
     }
@@ -651,7 +657,25 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
 
     @Override
     public void onSpectateApproved(SpectateApprovedEvent event) {
-        SwingUtilities.invokeLater(() -> view.showSpectateView(event.getMatchId()));
+        final String id = event.getMatchId();
+        if (id != null) {
+            spectatingMatchId = id;
+        }
+        SwingUtilities.invokeLater(() -> view.showSpectateView(id));
+    }
+
+    /** Stop watching the current spectate: clear state, drop spectator mode, tell the server. */
+    public void leaveSpectating() {
+        if (spectatingMatchId == null) { return; }
+        final String id = spectatingMatchId;
+        spectatingMatchId = null;
+        final FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
+        if (client != null) {
+            if (client.getGui() instanceof AbstractGuiGame agg) {
+                agg.setSpectatorMode(false);
+            }
+            client.send(new SpectateLeaveEvent(id));
+        }
     }
 
     public void initialize() {

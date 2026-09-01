@@ -15,6 +15,9 @@ import forge.gamemodes.match.YieldUpdate;
 import forge.localinstance.properties.ForgePreferences;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
+import forge.screens.home.CLobby;
+import forge.screens.home.VLobby;
+import forge.screens.home.online.VSubmenuOnlineLobby;
 import forge.screens.match.CMatchUI;
 import forge.screens.match.VAutoYieldsAndTriggers;
 import forge.screens.match.VYieldSettings;
@@ -49,9 +52,12 @@ public final class GameMenu {
         final SkinnedCheckBoxMenuItem autoPassItem = getMenuItem_AutoPass();
         menu.add(autoPassItem);
         menu.add(getMenuItem_ClearRememberedAbilityOrders());
+        final SkinnedMenuItem stopSpectating = getMenuItem_StopSpectating();
+        menu.add(stopSpectating);
         menu.addMenuListener(new MenuListener() {
             @Override public void menuSelected(final MenuEvent e) {
                 autoPassItem.setState(prefs.getPrefBoolean(FPref.YIELD_AUTO_PASS_NO_ACTIONS));
+                stopSpectating.setVisible(matchUI.isSpectatorMode());
             }
             @Override public void menuDeselected(final MenuEvent e) {}
             @Override public void menuCanceled(final MenuEvent e) {}
@@ -63,6 +69,21 @@ public final class GameMenu {
         final Localizer localizer = Localizer.getInstance();
         final SkinnedMenuItem menuItem = new SkinnedMenuItem(localizer.getMessage("lblResetSavedAbilityOrders"));
         menuItem.addActionListener(e -> matchUI.getGameController().sendYieldUpdate(new YieldUpdate.ClearAbilityOrders()));
+        return menuItem;
+    }
+
+    private SkinnedMenuItem getMenuItem_StopSpectating() {
+        final Localizer localizer = Localizer.getInstance();
+        final SkinnedMenuItem menuItem = new SkinnedMenuItem("Stop Spectating");
+        menuItem.setVisible(false);
+        menuItem.addActionListener(e -> {
+            final VLobby vLobby = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getLobbyView();
+            final CLobby cl = vLobby != null ? vLobby.getController() : null;
+            if (cl != null) {
+                cl.leaveSpectating();
+            }
+            matchUI.afterGameEnd(); //close the game tab and return to the lobby
+        });
         return menuItem;
     }
 

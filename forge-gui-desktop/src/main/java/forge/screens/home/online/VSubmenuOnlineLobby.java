@@ -76,6 +76,10 @@ public enum VSubmenuOnlineLobby implements IVSubmenu<CSubmenuOnlineLobby>, IOnli
         return this.client;
     }
 
+    public VLobby getLobbyView() {
+        return this.lobby;
+    }
+
     @Override
     public void populate() {
         final JPanel container = VHomeUI.SINGLETON_INSTANCE.getPnlDisplay();

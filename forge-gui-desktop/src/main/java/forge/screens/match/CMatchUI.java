@@ -984,6 +984,10 @@ public final class CMatchUI
             writeMatchPreferences();
         }
         final GameView gameView = getGameView();
+        if (isSpectatorMode()) {
+            // Spectators never get a WinLose screen; afterGameEnd closes the tab.
+            return;
+        }
         if (hasLocalPlayers() || gameView.isMatchOver()) {
             new ViewWinLose(gameView, this).show();
         }
