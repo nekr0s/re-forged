@@ -203,6 +203,14 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         return matchGuis.get(matchId);
     }
 
+    /**
+     * Snapshot of the current match-GUI keys. Returns a copy so callers may
+     * iterate while removing entries (e.g. the spectate auto-leave loop).
+     */
+    public java.util.Set<String> getMatchGuiKeys() {
+        return new java.util.HashSet<>(matchGuis.keySet());
+    }
+
     public void setMatchGui(final String matchId, final RemoteClientGuiGame gui) {
         matchGuis.put(matchId, gui);
     }

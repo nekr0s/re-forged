@@ -1022,6 +1022,14 @@ public class Game {
         events.register(subscriber);
     }
 
+    public void unsubscribeFromEvents(final Object subscriber) {
+        try {
+            events.unregister(subscriber);
+        } catch (final IllegalArgumentException ignored) {
+            // Already unregistered (e.g. the match already ended) — nothing to do.
+        }
+    }
+
     public GameRules getRules() {
         return rules;
     }

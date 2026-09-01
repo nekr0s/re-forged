@@ -26,6 +26,7 @@ import forge.gui.FThreads;
 import forge.gui.GuiBase;
 import forge.gui.control.FControlGameEventHandler;
 import forge.gui.control.FControlGamePlayback;
+import forge.gui.control.GameEventForwarder;
 import forge.gui.control.PlaybackSpeed;
 import forge.gui.control.WatchLocalGame;
 import forge.gui.events.*;
@@ -406,6 +407,26 @@ public class HostedMatch {
         }
 
         humanControllers.add(spectatorController);
+    }
+
+    /**
+     * Remove a remote spectator from this match. Unsubscribes its forwarder from
+     * the game event bus and every human controller's input queue, shuts the
+     * forwarder down, and drops its WatchRemoteGame controller. Null-safe for a
+     * match whose game has already been torn down.
+     */
+    public void unregisterNetworkSpectator(final RemoteClientGuiGame gui) {
+        final GameEventForwarder forwarder = gui.getForwarder();
+        if (forwarder != null) {
+            if (game != null) {
+                game.unsubscribeFromEvents(forwarder);
+            }
+            for (final PlayerControllerHuman hc : humanControllers) {
+                hc.getInputQueue().deleteObserver(forwarder);
+            }
+            gui.shutdownForwarder();
+        }
+        humanControllers.removeIf(hc -> hc.getGui() == gui);
     }
 
     public Game getGame() {
