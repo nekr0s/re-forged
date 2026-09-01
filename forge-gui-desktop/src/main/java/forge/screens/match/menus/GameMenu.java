@@ -73,7 +73,6 @@ public final class GameMenu {
     }
 
     private SkinnedMenuItem getMenuItem_StopSpectating() {
-        final Localizer localizer = Localizer.getInstance();
         final SkinnedMenuItem menuItem = new SkinnedMenuItem("Stop Spectating");
         menuItem.setVisible(false);
         menuItem.addActionListener(e -> {

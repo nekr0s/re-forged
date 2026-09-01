@@ -1005,8 +1005,8 @@ public class VLobby implements ILobbyView, IHasForgeLog {
                     btnSpectate.setEnabled(spectateList.getSelectedIndex() >= 0));
             btnSpectate.addActionListener(e -> {
                 int idx = spectateList.getSelectedIndex();
-                if (idx >= 0 && getController() != null) {
-                    getController().requestSpectate(ongoing.get(idx).matchId());
+                if (idx >= 0 && controller != null) {
+                    controller.requestSpectate(ongoing.get(idx).matchId());
                 }
             });
             tournamentPanel.add(new FLabel.Builder().text("Ongoing Matches:").build(),
