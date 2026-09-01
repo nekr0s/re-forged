@@ -1,5 +1,6 @@
 package forge.net;
 
+import forge.gamemodes.net.ReplyPool;
 import forge.gamemodes.net.server.FServerManager;
 import forge.gamemodes.net.server.RemoteClient;
 import forge.gamemodes.net.server.RemoteClientGuiGame;
@@ -8,6 +9,9 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import java.lang.reflect.Field;
+import java.util.Map;
 
 /**
  * Server-side spectate lifecycle: the pure guard helpers and the leave teardown.
@@ -65,6 +69,30 @@ public class SpectateServerTest {
         client.removeMatchGui("match-9");
         Assert.assertFalse(FServerManager.isClientInOwnMatch(client),
                 "after the match ends the participant is free to spectate");
+    }
+
+    @Test
+    public void rekeyMovesReplyPoolAcrossKeys() throws Exception {
+        RemoteClient client = new RemoteClient(new EmbeddedChannel());
+        // Tournament match start creates the player GUI via the legacy path → "default".
+        new RemoteClientGuiGame(client);
+        Assert.assertEquals(client.getActiveMatchId(), "default");
+
+        // A pending reply (game thread waiting on a remote prompt) may already be
+        // registered under the legacy "default" key before the rekey runs.
+        Field repliesField = RemoteClient.class.getDeclaredField("matchReplies");
+        repliesField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, ReplyPool> matchReplies = (Map<String, ReplyPool>) repliesField.get(client);
+        ReplyPool pendingPool = new ReplyPool();
+        matchReplies.put("default", pendingPool);
+
+        client.rekeyActiveMatchGui("match-9");
+
+        Assert.assertSame(pendingPool, matchReplies.get("match-9"),
+                "the pending reply pool must move to the rekeyed matchId so the game thread can resolve it");
+        Assert.assertFalse(matchReplies.containsKey("default"),
+                "the legacy 'default' reply pool must not linger after the rekey");
     }
 
     @Test

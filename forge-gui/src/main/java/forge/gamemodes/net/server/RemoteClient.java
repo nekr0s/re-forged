@@ -229,6 +229,10 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         }
         matchGuis.remove(current);
         matchGuis.put(matchId, gui);
+        final ReplyPool replies = matchReplies.remove(current);
+        if (replies != null) {
+            matchReplies.put(matchId, replies);
+        }
         activeMatchId = matchId;
     }
 
