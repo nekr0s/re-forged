@@ -26,6 +26,7 @@ import forge.gui.FThreads;
 import forge.gui.GuiBase;
 import forge.gui.control.FControlGameEventHandler;
 import forge.gui.control.FControlGamePlayback;
+import forge.gui.control.GameEventForwarder;
 import forge.gui.control.PlaybackSpeed;
 import forge.gui.control.WatchLocalGame;
 import forge.gui.events.*;
@@ -66,12 +67,32 @@ public class HostedMatch {
     private final MatchUiEventVisitor visitor = new MatchUiEventVisitor();
     private final Map<PlayerControllerHuman, NextGameDecision> nextGameDecisions = Maps.newHashMap();
     private boolean isMatchOver = false;
+    private boolean tournamentMatch = false;
     public int subGameCount = 0;
 
     public HostedMatch() {}
 
     public String getMatchId() {
         return matchId;
+    }
+
+    /**
+     * Mark this match (and its GUIs) as a tournament match so the WinLose screen
+     * selects the tournament controller instead of the generic limited one.
+     */
+    public void setTournamentMatch(final boolean tournamentMatch) {
+        this.tournamentMatch = tournamentMatch;
+        if (guis != null) {
+            for (final IGuiGame gui : guis.values()) {
+                if (gui != null) {
+                    gui.setTournamentMatch(tournamentMatch);
+                }
+            }
+        }
+    }
+
+    public boolean isTournamentMatch() {
+        return tournamentMatch;
     }
 
     public void setStartGameHook(Runnable hook) {
@@ -373,6 +394,11 @@ public class HostedMatch {
         final forge.gamemodes.net.server.WatchRemoteGame spectatorController =
             new forge.gamemodes.net.server.WatchRemoteGame(game, null, gui);
         gui.setSpectator(spectatorController);
+        // Give the spectator GUI the current game view before openView so its
+        // sendFullState() ships a setGameView to the client (mirrors the player
+        // path in startGame). Without this the spectator's client GUI never
+        // receives a GameView and drops the whole delta stream.
+        gui.setGameView(game.getView());
         gui.openView(null);
 
         // Create a GameEventForwarder to push events to the remote client
@@ -386,6 +412,26 @@ public class HostedMatch {
         }
 
         humanControllers.add(spectatorController);
+    }
+
+    /**
+     * Remove a remote spectator from this match. Unsubscribes its forwarder from
+     * the game event bus and every human controller's input queue, shuts the
+     * forwarder down, and drops its WatchRemoteGame controller. Null-safe for a
+     * match whose game has already been torn down.
+     */
+    public void unregisterNetworkSpectator(final RemoteClientGuiGame gui) {
+        final GameEventForwarder forwarder = gui.getForwarder();
+        if (forwarder != null) {
+            if (game != null) {
+                game.unsubscribeFromEvents(forwarder);
+            }
+            for (final PlayerControllerHuman hc : humanControllers) {
+                hc.getInputQueue().deleteObserver(forwarder);
+            }
+            gui.shutdownForwarder();
+        }
+        humanControllers.removeIf(hc -> hc.getGui() == gui);
     }
 
     public Game getGame() {

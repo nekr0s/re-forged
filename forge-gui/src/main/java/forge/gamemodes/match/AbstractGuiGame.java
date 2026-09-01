@@ -46,6 +46,8 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
     private String daytime = null;
     private boolean ignoreConcedeChain = false;
     private boolean networkGame = false;
+    private boolean tournamentMatch = false;
+    private boolean spectatorMode = false;
 
     private Timer waitingTimer;
     private long waitingStartTime;
@@ -57,6 +59,26 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
     @Override
     public void setNetGame() {
         networkGame = true;
+    }
+
+    @Override
+    public boolean isTournamentMatch() {
+        return tournamentMatch;
+    }
+    @Override
+    public void setTournamentMatch(final boolean tournamentMatch) {
+        this.tournamentMatch = tournamentMatch;
+    }
+
+    /**
+     * A spectator view (online tournament spectating): the client is watching a
+     * match it does not play in, so only public information may be rendered.
+     */
+    public final boolean isSpectatorMode() {
+        return spectatorMode;
+    }
+    public final void setSpectatorMode(final boolean spectatorMode) {
+        this.spectatorMode = spectatorMode;
     }
 
     public final boolean hasLocalPlayers() {
@@ -241,6 +263,7 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
         gameControllers.clear();
         originalGameControllers.clear();
         spectator = null;
+        spectatorMode = false;
         currentPlayer = null;
     }
 
@@ -271,6 +294,18 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
 
     @Override
     public boolean mayView(final CardView c) {
+        if (spectatorMode) {
+            // Spectators see only public info: cards every player in the game can see.
+            if (gameView == null || gameView.getPlayers() == null) {
+                return false;
+            }
+            for (final PlayerView p : gameView.getPlayers()) {
+                if (!c.canBeShownTo(p)) {
+                    return false;
+                }
+            }
+            return true;
+        }
         if (!hasLocalPlayers()) {
             return true; //if not in game, card can be shown
         }
@@ -287,6 +322,10 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
     public boolean mayFlip(final CardView cv) {
         if (cv == null) {
             return false;
+        }
+        if (spectatorMode) {
+            // A face-down card's face is private; a face-up card's back is public.
+            return !cv.isFaceDown();
         }
 
         final CardStateView altState = cv.getAlternateState();

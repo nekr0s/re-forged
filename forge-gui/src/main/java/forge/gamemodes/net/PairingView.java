@@ -15,6 +15,8 @@ public record PairingView(
     public enum PairingStatus {
         ONGOING,
         COMPLETE,
-        BYE
+        BYE,
+        DRAW,
+        VOID
     }
 }

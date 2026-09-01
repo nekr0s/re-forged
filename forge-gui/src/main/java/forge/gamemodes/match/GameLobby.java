@@ -366,12 +366,12 @@ public abstract class GameLobby implements IHasGameType {
     }
 
     /** Formats one "name: problem" line, indenting any card list the problem appends. */
-    private static String legalityProblemEntry(final String name, final String problem) {
+    protected static String legalityProblemEntry(final String name, final String problem) {
         return name + ": " + problem.replace("\n", "\n    ");
     }
 
     /** Lists every illegal deck in one warning and offers to ignore it. Returns true if the user chose to continue anyway. */
-    private static boolean confirmIgnoreDeckLegality(final List<String> problems) {
+    protected static boolean confirmIgnoreDeckLegality(final List<String> problems) {
         final Localizer localizer = Localizer.getInstance();
         final StringBuilder message = new StringBuilder(localizer.getMessage("lblDecksNotLegal"));
         message.append('\n');

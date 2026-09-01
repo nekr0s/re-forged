@@ -972,6 +972,8 @@ public class VLobby implements ILobbyView, IHasForgeLog {
                     case ONGOING -> " [Spectate]";
                     case COMPLETE -> " — " + p.winnerName() + " won";
                     case BYE -> " — BYE";
+                    case DRAW -> " — Draw";
+                    case VOID -> " — Void";
                 };
                 pairingsText.append(p.playerAName()).append(" vs ").append(p.playerBName())
                         .append(status).append("<br>");
@@ -984,6 +986,34 @@ public class VLobby implements ILobbyView, IHasForgeLog {
         tournamentPanel.add(lblTournamentRound, "wrap");
         tournamentPanel.add(lblTournamentStandings, "gaptop 10, wrap");
         tournamentPanel.add(lblTournamentPairings, "gaptop 10, wrap");
+
+        // Ongoing matches: pick one to spectate.
+        final List<PairingView> ongoing = new ArrayList<>();
+        for (PairingView p : pairings) {
+            if (p.status() == PairingView.PairingStatus.ONGOING && p.matchId() != null) {
+                ongoing.add(p);
+            }
+        }
+        if (!ongoing.isEmpty()) {
+            final JList<String> spectateList = new JList<>(ongoing.stream()
+                    .map(p -> p.playerAName() + " vs " + p.playerBName())
+                    .toArray(String[]::new));
+            spectateList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            final FButton btnSpectate = new FButton("Spectate");
+            btnSpectate.setEnabled(false);
+            spectateList.addListSelectionListener(e ->
+                    btnSpectate.setEnabled(spectateList.getSelectedIndex() >= 0));
+            btnSpectate.addActionListener(e -> {
+                int idx = spectateList.getSelectedIndex();
+                if (idx >= 0 && controller != null) {
+                    controller.requestSpectate(ongoing.get(idx).matchId());
+                }
+            });
+            tournamentPanel.add(new FLabel.Builder().text("Ongoing Matches:").build(),
+                    "gaptop 5, wrap");
+            tournamentPanel.add(spectateList, "w 100%, h 60!, wrap");
+            tournamentPanel.add(btnSpectate, "w 70!, h 26!, wrap");
+        }
 
         tournamentPanel.revalidate();
         tournamentPanel.repaint();
@@ -1007,8 +1037,11 @@ public class VLobby implements ILobbyView, IHasForgeLog {
     }
 
     void showSpectateView(String matchId) {
-        FOptionPane.showMessageDialog("Now spectating match", "Spectator Mode",
-                FSkin.getIcon(FSkinProp.ICO_INFORMATION));
+        if (matchId == null) {
+            FOptionPane.showMessageDialog("Cannot spectate that match.", "Spectate",
+                    FSkin.getIcon(FSkinProp.ICO_WARNING));
+        }
+        // On success the game screen opens via the openView stream; nothing to do here.
     }
 
     void updateRightPanelForMode() {

@@ -519,6 +519,10 @@ public final class FServerManager implements IHasForgeLog {
         return this.localLobby != null && this.localLobby.isMatchActive();
     }
 
+    /** Key prefix that marks a {@link RemoteClient} match-GUI entry as a spectator
+     *  view rather than a player's own match (see {@link #spectateProblemFor}). */
+    public static final String SPECTATE_KEY_PREFIX = "spectate:";
+
     /**
      * Handle a spectate request from a client.
      */
@@ -528,13 +532,27 @@ public final class FServerManager implements IHasForgeLog {
             return;
         }
         final HostedMatch match = localLobby.getMatch(matchId);
-        if (match == null || match.getGame() == null) {
+        final String problem = spectateProblemFor(client, matchId, match);
+        if (problem != null) {
+            netLog.warn("Rejected spectate request from client {} for match {}: {}",
+                    client.getIndex(), matchId, problem);
             client.send(new SpectateApprovedEvent(null));
             return;
         }
 
+        // One spectate per client: drop any previous one before attaching the new.
+        for (final String key : client.getMatchGuiKeys()) {
+            if (key.startsWith(SPECTATE_KEY_PREFIX)) {
+                leaveSpectate(client, key.substring(SPECTATE_KEY_PREFIX.length()));
+            }
+        }
+
         final RemoteClientGuiGame spectatorGui = new RemoteClientGuiGame(client, matchId);
-        final String spectateKey = "spectate:" + matchId;
+        final String spectateKey = SPECTATE_KEY_PREFIX + matchId;
+        // The constructor registers under the bare matchId; move it under the prefixed
+        // key so the "in a match" guard can distinguish spectator entries from a
+        // player's own match. Guard 2 guarantees no bare key exists for this client.
+        client.removeMatchGui(matchId);
         client.setMatchGui(spectateKey, spectatorGui);
         client.setActiveMatchId(spectateKey);
 
@@ -545,10 +563,62 @@ public final class FServerManager implements IHasForgeLog {
     }
 
     /**
+     * True if this client is a player in one of their own matches right now: they
+     * have a match-GUI entry under a bare (non-prefixed) key. A client with only
+     * {@code "spectate:"}-prefixed entries is merely watching.
+     */
+    public static boolean isClientInOwnMatch(final RemoteClient client) {
+        for (final String key : client.getMatchGuiKeys()) {
+            if (!key.startsWith(SPECTATE_KEY_PREFIX)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Pure guard for a spectate request: returns a human-readable rejection reason,
+     * or {@code null} if the request may proceed. A client whose own match is
+     * running (a bare, non-prefixed match-GUI key) cannot spectate; a client that
+     * is only spectating may switch freely.
+     */
+    public static String spectateProblemFor(final RemoteClient client, final String matchId,
+            final HostedMatch match) {
+        if (matchId == null || match == null || match.getGame() == null) {
+            return "no running match";
+        }
+        if (isClientInOwnMatch(client)) {
+            return "client is already in a match";
+        }
+        return null;
+    }
+
+    /**
      * Handle a spectate leave from a client.
      */
     public void handleSpectateLeave(final String matchId, final RemoteClient client) {
-        final String spectateKey = "spectate:" + matchId;
+        leaveSpectate(client, matchId);
+    }
+
+    /**
+     * Drop any active spectate for this client. Called when the client's own match
+     * starts — a client has a single active game view and cannot spectate while playing.
+     */
+    public void dropSpectates(final RemoteClient client) {
+        for (final String key : client.getMatchGuiKeys()) {
+            if (key.startsWith(SPECTATE_KEY_PREFIX)) {
+                leaveSpectate(client, key.substring(SPECTATE_KEY_PREFIX.length()));
+            }
+        }
+    }
+
+    private void leaveSpectate(final RemoteClient client, final String matchId) {
+        final String spectateKey = SPECTATE_KEY_PREFIX + matchId;
+        final HostedMatch match = localLobby != null ? localLobby.getMatch(matchId) : null;
+        final RemoteClientGuiGame spectatorGui = client.getMatchGui(spectateKey);
+        if (spectatorGui != null && match != null) {
+            match.unregisterNetworkSpectator(spectatorGui);
+        }
         client.removeMatchGui(spectateKey);
         netLog.info("Client {} stopped spectating match {}", client.getIndex(), matchId);
     }
@@ -647,9 +717,7 @@ public final class FServerManager implements IHasForgeLog {
             if (client != null) {
                 RemoteClientGuiGame gui = client.getMatchGui(matchId);
                 if (gui == null) {
-                    // TODO: Task 6 will add RemoteClientGuiGame(client, matchId) constructor
-                    gui = new RemoteClientGuiGame(client);
-                    client.setMatchGui(matchId, gui);
+                    gui = new RemoteClientGuiGame(client, matchId);
                 }
                 return gui;
             }

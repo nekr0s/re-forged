@@ -152,6 +152,12 @@ Implementation notes:
 
 ### Gap 2 — `gamesPerMatch` is dead
 
+> **Status: RESOLVED 2026-09-01.** `ServerTournamentController` now takes
+> `gamesPerMatch` and applies it via
+> `match.getMatch().getRules().setGamesPerMatch(gamesPerMatch)` in
+> `startMatchForPairing`, so best-of-N is tournament-scoped instead of following
+> the global `UI_MATCHES_PER_GAME` preference.
+
 `ServerGameLobby.startTournament(int gamesPerMatch)` receives the host's 1/3/5 selection
 from the `gamesInMatch` combo but only logs it. `ServerTournamentController` has no such
 field, and `HostedMatch` defaults matches to the global `UI_MATCHES_PER_GAME` preference.
@@ -163,6 +169,12 @@ original plan used). Consider passing it through `startMatch`/`HostedMatch` inst
 lives next to the other rule defaults.
 
 ### Gap 3 — Draft tournaments run as `GameType.Constructed`
+
+> **Status: RESOLVED 2026-09-01.** The controller maps event format via a new
+> `ServerTournamentController.gameTypeFor(EventFormat)`:
+> `SEALED → GameType.Sealed`, `BOOSTER_DRAFT → GameType.Draft`, else `Constructed`,
+> matching `GameLobby.startGame`'s limited convention. Covered by
+> `ServerTournamentControllerTest`.
 
 `startMatchForPairing` maps `SEALED → GameType.Sealed` and **draft → `GameType.Constructed`**.
 The established network limited convention (`GameLobby.startGame`) uses `GameType.Draft` for
@@ -177,6 +189,14 @@ other tournament detection) not depend on `GameType` alone — carry an explicit
 
 ### Gap 4 — `ViewWinLose` hijacks every network limited game
 
+> **Status: RESOLVED 2026-09-01.** Tournament membership is now an explicit signal,
+> not a `GameType` guess. `HostedMatch.setTournamentMatch(true)` marks the match's
+> GUIs server-side (the controller calls it in `startMatchForPairing`); the shared
+> client GUI is armed from `MatchStartedEvent` in `CLobby.onMatchStarted` and reset
+> on every `openView` (`GameClientHandler`) so ordinary network limited games fall
+> through to `LimitedWinLose` again. `ViewWinLose` gates on
+> `matchUI.isNetGame() && matchUI.isTournamentMatch()`.
+
 `ViewWinLose` selects `NetworkTournamentWinLose` for **any** `isNetGame()` match whose
 `GameType` is `Sealed` or `Draft` — including ordinary non-tournament network sealed/draft
 events, which previously got `LimitedWinLose`. This is a regression of the backward-compat
@@ -187,6 +207,17 @@ requirement.
 flag through the match startup). The detection must be the same server+client.
 
 ### Gap 5 — Spectating is server-complete but client-stubbed
+
+> **Scope decisions (2026-09-01, for the future client-side phase):**
+> 1. **Lobby-spectating only** — one active game view per client at a time
+>    (spectate during standby / after finishing / as a non-participant). Concurrent
+>    spectating while also playing your own match would require multi-tracker wire
+>    codecs on both ends (high effort) and is out of scope.
+> 2. **Hidden hands, client-side** — spectators see only public zones (battlefield,
+>    graveyard, stack, life totals), rendered via a spectator flag on the GUI rather
+>    than server-side per-viewer filtering in `DeltaSyncManager`. (Today
+>    `AbstractGuiGame.mayView` returns `true` for a GUI with no local players, so an
+>    unmodified spectator would see both hands — a cheating vector.)
 
 The server half exists and works: `SpectateRequestEvent` → `handleSpectateRequest` creates a
 read-only `RemoteClientGuiGame`, `HostedMatch.registerNetworkSpectator` wires a
@@ -206,6 +237,11 @@ subscribes to the match's event stream.
    starts. Define the "leave" UX (`SpectateLeaveEvent` already exists).
 4. The original spec's between-round standby with ready/AFK countdown (see Gap 7) can wait —
    spectate only applies during `ROUND`/`ACTIVE` play.
+
+> **Status: RESOLVED 2026-09-01** — implemented per the design doc
+> `docs/superpowers/specs/2026-09-01-online-tournament-spectate-design.md`. Left as known
+> limitations for a future phase: concurrent spectating while playing your own match,
+> server-side hand filtering on the wire, reconnect-while-spectating, and mobile spectate UI.
 
 ### Gap 6 — Dead code & unfulfilled "auto-continue"
 
@@ -236,6 +272,16 @@ function with co-operative hosts.
 
 ### Gap 8 — Winner determination silently awards wins
 
+> **Status: RESOLVED 2026-09-01.** `TournamentPairing` now carries a `MatchResult`
+> (`PENDING/WIN/DRAW/VOID`): a match that ends with no winner (`getWinner() == null`)
+> becomes a **DRAW** (both players get a tie), a missing match or an unmatched
+> winner name becomes a **VOID** (no points, no opponents recorded) instead of
+> silently handing the match to player A. `determineWinner` logs loudly on every
+> non-WIN outcome. The tie/void scoring lives in
+> `TournamentRoundRobin.reportMatchCompletion`; the outcome mapping is the pure,
+> unit-tested `ServerTournamentController.resolveMatchOutcome`. Pairings render as
+> "Draw"/"Void" in the tournament panel (`PairingView.PairingStatus`).
+
 `determineWinner` falls back to `pairedPlayers.get(0)` whenever the match winner is `null`
 (e.g., a draw in the final game, or a name mismatch) or the match object is gone. If both
 players in a pairing disconnect, the first player still gets the match win. Draws cannot be
@@ -246,6 +292,14 @@ tie) and add a no-show/void path (both players AWOL → void the pairing, no poi
 silently awarding to player A. At minimum log loudly on the fallback so it is never invisible.
 
 ### Gap 9 — No end-to-end test for the tournament flow
+
+> **Status: RESOLVED 2026-09-01.** `TournamentEndToEndTest` boots a real server +
+> `ServerGameLobby`, sets up a 4-AI-participant sealed event with fast minimal
+> decks, starts a best-of-1 round-robin tournament, lets it run to completion
+> (all-AI auto-advances between rounds), and asserts: 3 rounds played by every
+> player, the full broadcast chain (`TournamentStart/Update`, `MatchStarted/
+> Complete`, `RoundComplete`, `TournamentComplete`), non-empty pairings/standings
+> snapshots, and score-sorted final standings.
 
 Coverage today: unit tests for round-robin pairings, byes, OMW%, standings sort, and the
 winner-name-matching bug (`TournamentLogicTest`), plus multi-match primitives
@@ -274,6 +328,14 @@ exists.
 
 ### Gap 11 — Server-initiated ready writes bypass the notification funnel (confirmed root cause of the ready-checkbox bug)
 
+> **Status: RESOLVED (verified 2026-09-01).** The funnel fix landed in code before
+> this document was updated: `enterBetweenRoundStandby` routes through
+> `lobby.setPlayerReady(...)` → `applyToSlot` (the single authorized writer),
+> `startMatchForPairing` no longer pre-sets ready, and
+> `ServerGameLobby.onMatchOver(matchId)` skips the reset during tournaments (the
+> controller owns the standby reset). No silent `slot.setIsReady(...)` writes
+> remain in the tournament path.
+
 The ready flag lives once on the server (`LobbySlot.isReady`) and is displayed on every
 screen. All **player-initiated** changes flow through a single funnel
 (`applyToSlot` → `updateView` → refresh the host's own screen **and** broadcast
@@ -297,6 +359,15 @@ a match-starting mechanism — the flag should only mean "ready in standby" (see
 trail below).
 
 ### Gap 12 — Tournament start lacks the legacy ready/deck/legality gate and failure feedback
+
+> **Status: RESOLVED 2026-09-01.** `startTournament` now collects every problem —
+> per-human ready/deck/empty-main via the pure `ServerGameLobby.startProblemFor`,
+> plus a Limited-format legality check for all participants via
+> `ServerGameLobby.legalityProblemFor` when `ENFORCE_DECK_LEGALITY` is on (reusing
+> the legacy `GameLobby.legalityProblemEntry` / `confirmIgnoreDeckLegality`, now
+> `protected`). On failure it broadcasts a chat `MessageEvent` (no more silent
+> no-op button) and shows the host the Ignore/Cancel legality dialog. Both helpers
+> are unit-tested in `ServerGameLobbyStartGateTest`.
 
 The legacy "Start Match" path (`GameLobby.startGame`) validates before starting and tells the
 host *why* it refuses: per-slot "Player X is not ready" and "Please specify player deck" dialogs,
@@ -452,15 +523,29 @@ host-refresh half vs. the tournament's network-only half — is the entire bug.
    re-derivation and the engine object on the wire.~~ **Done 2026-08-19.** The update event is
    broadcast on every transition; `TournamentStartEvent` is a wire-safe summary; client
    re-derivation (`buildPairingViews`/`buildStandingViews`) and the Serializable whack-a-mole
-   were removed. Add a headless end-to-end test (Gap 9) to pin the flow.
-2. **Gap 11** — route server-initiated ready writes through the `applyToSlot`/`updateView`
-   funnel (fixes the host's stale ready checkbox).
-3. **Gap 12** — rebuild the legacy ready/deck/legality start gate + failure feedback in
-   `startTournament` (reuse `confirmIgnoreDeckLegality` by making it `protected`).
-4. **Gap 2 + Gap 3 + Gap 4** — wire `gamesPerMatch`, fix draft game type, and gate WinLose
-   on real tournament membership. Small, high-value correctness fixes.
-5. **Gap 5** — complete the client side of spectating (depends on Gap 1's real `matchId`).
-6. **Gap 8** — draw/void policy for winner determination.
-7. **Gap 9** — headless end-to-end tournament test.
+   were removed. A headless end-to-end test now pins the flow (see Gap 9).
+2. ~~**Gap 11** — route server-initiated ready writes through the `applyToSlot`/`updateView`
+   funnel (fixes the host's stale ready checkbox).~~ **Done (verified 2026-09-01).**
+3. ~~**Gap 12** — rebuild the legacy ready/deck/legality start gate + failure feedback in
+   `startTournament` (reuse `confirmIgnoreDeckLegality` by making it `protected`).~~
+   **Done 2026-09-01** — gate collects all problems, broadcasts on failure, reuses the legacy
+   legality dialog; helpers unit-tested.
+4. ~~**Gap 2 + Gap 3 + Gap 4** — wire `gamesPerMatch`, fix draft game type, and gate WinLose
+   on real tournament membership.~~ **Done 2026-09-01** — `gamesPerMatch` is applied to match
+   rules, `gameTypeFor()` maps draft → `GameType.Draft`, and `ViewWinLose` gates on the new
+   `isTournamentMatch()` flag (armed from `MatchStartedEvent`, reset on `openView`).
+5. ~~**Gap 8** — draw/void policy for winner determination.~~ **Done 2026-09-01** —
+   `TournamentPairing.MatchResult` (WIN/DRAW/VOID), ties on draw, void on no-match/desync,
+   loud logging, panel shows Draw/Void.
+6. ~~**Gap 9** — headless end-to-end tournament test.~~ **Done 2026-09-01** —
+   `TournamentEndToEndTest` runs a full 4-player best-of-1 round-robin to completion and
+   asserts the event chain + final standings.
+7. ~~**Gap 5** — complete the client side of spectating.~~ **Done 2026-09-01** — lobby-only
+   spectating with client-side hidden hands: Ongoing Matches list + Spectate button in the
+   tournament panel, spectator mode on the shared client GUI (armed from `openView`
+   `myPlayers` null-ness), hidden-hands `mayView`/`mayFlip`, server guards + `"spectate:"`
+   key convention + leave teardown, Game-menu "Stop Spectating", WinLose suppression, and a
+   headless e2e (`SpectateEndToEndTest`). See
+   `docs/superpowers/specs/2026-09-01-online-tournament-spectate-design.md`.
 8. **Gap 6/Gap 7** — clean up dead code, document the manual-continue and host-controlled
    standby choices.
