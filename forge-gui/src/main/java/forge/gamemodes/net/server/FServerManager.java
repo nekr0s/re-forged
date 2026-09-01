@@ -600,6 +600,18 @@ public final class FServerManager implements IHasForgeLog {
         leaveSpectate(client, matchId);
     }
 
+    /**
+     * Drop any active spectate for this client. Called when the client's own match
+     * starts — a client has a single active game view and cannot spectate while playing.
+     */
+    public void dropSpectates(final RemoteClient client) {
+        for (final String key : client.getMatchGuiKeys()) {
+            if (key.startsWith(SPECTATE_KEY_PREFIX)) {
+                leaveSpectate(client, key.substring(SPECTATE_KEY_PREFIX.length()));
+            }
+        }
+    }
+
     private void leaveSpectate(final RemoteClient client, final String matchId) {
         final String spectateKey = SPECTATE_KEY_PREFIX + matchId;
         final HostedMatch match = localLobby != null ? localLobby.getMatch(matchId) : null;
@@ -683,13 +695,6 @@ public final class FServerManager implements IHasForgeLog {
         } else if (type == LobbySlotType.REMOTE) {
             final RemoteClient client = findClientByIndex(index);
             if (client != null) {
-                // A client whose own match is starting drops any spectate — the client
-                // has a single active game view and cannot spectate while playing.
-                for (final String key : client.getMatchGuiKeys()) {
-                    if (key.startsWith(SPECTATE_KEY_PREFIX)) {
-                        leaveSpectate(client, key.substring(SPECTATE_KEY_PREFIX.length()));
-                    }
-                }
                 RemoteClientGuiGame gui = client.getGui();
                 if (gui == null) {
                     return new RemoteClientGuiGame(client);
@@ -749,20 +754,6 @@ public final class FServerManager implements IHasForgeLog {
         }
         for (final RemoteClient client : disconnectedClients.values()) {
             client.removeMatchGui(matchId);
-        }
-    }
-
-    /**
-     * Clear the legacy "default" own-match GUI for one remote player slot. A remote
-     * player's own-match GUI is keyed "default" by the single-arg {@link #getGui(int)}
-     * path, so {@link #clearPlayerGuis(String)} (which only removes matchId-keyed
-     * entries) cannot remove it. Called when a player's match ends so a finished
-     * tournament participant is free to spectate later rounds.
-     */
-    public void clearPlayerGuiFor(final int index) {
-        final RemoteClient client = findClientByIndex(index);
-        if (client != null) {
-            client.removeMatchGui("default");
         }
     }
 

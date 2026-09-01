@@ -48,6 +48,26 @@ public class SpectateServerTest {
     }
 
     @Test
+    public void rekeyActiveMatchGuiMovesDefaultToMatchId() {
+        RemoteClient client = new RemoteClient(new EmbeddedChannel());
+        // Tournament match start creates the player GUI via the legacy path → "default".
+        new RemoteClientGuiGame(client);
+        Assert.assertEquals(client.getActiveMatchId(), "default");
+
+        client.rekeyActiveMatchGui("match-9");
+        Assert.assertNotNull(client.getMatchGui("match-9"));
+        Assert.assertNull(client.getMatchGui("default"));
+        Assert.assertEquals(client.getActiveMatchId(), "match-9");
+        Assert.assertTrue(FServerManager.isClientInOwnMatch(client),
+                "while their rekeyed match is running a participant is in a match");
+
+        // clearPlayerGuis(matchId) at match end removes it, freeing the participant.
+        client.removeMatchGui("match-9");
+        Assert.assertFalse(FServerManager.isClientInOwnMatch(client),
+                "after the match ends the participant is free to spectate");
+    }
+
+    @Test
     public void matchEndClearsDefaultGui() {
         RemoteClient client = new RemoteClient(new EmbeddedChannel());
         new RemoteClientGuiGame(client);

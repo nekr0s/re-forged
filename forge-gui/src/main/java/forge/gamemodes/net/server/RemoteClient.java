@@ -215,6 +215,23 @@ public final class RemoteClient implements IToClient, IHasForgeLog {
         matchGuis.put(matchId, gui);
     }
 
+    /**
+     * Move the client's active match GUI to a real matchId key. Tournament matches
+     * create the player GUI via the legacy {@code setGui} path (keyed "default"),
+     * but the scoped {@code clearPlayerGuis(matchId)} can only clean up a matchId-
+     * keyed entry — so the tournament controller rekeys it once the match exists.
+     */
+    public void rekeyActiveMatchGui(final String matchId) {
+        final String current = activeMatchId;
+        final RemoteClientGuiGame gui = current != null ? matchGuis.get(current) : null;
+        if (gui == null) {
+            return;
+        }
+        matchGuis.remove(current);
+        matchGuis.put(matchId, gui);
+        activeMatchId = matchId;
+    }
+
     public void removeMatchGui(final String matchId) {
         matchGuis.remove(matchId);
         matchReplies.remove(matchId);

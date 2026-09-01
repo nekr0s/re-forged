@@ -195,6 +195,21 @@ public class ServerTournamentController implements IHasForgeLog {
             // Gap 4: mark the match so the host's WinLose screen picks the tournament controller.
             match.setTournamentMatch(true);
 
+            // Key each remote participant's own-match GUI under this match's real id so
+            // clearPlayerGuis(matchId) removes it at match end and the spectate guard sees
+            // "in own match" only while the match is actually running (not a lingering
+            // legacy "default" entry).
+            for (final TournamentPlayer tp : pairing.getPairedPlayers()) {
+                final EventParticipant ep = findParticipant(tp);
+                if (ep == null) {
+                    continue;
+                }
+                final RemoteClient client = server.findClientByIndex(ep.getLobbySlotIndex());
+                if (client != null) {
+                    client.rekeyActiveMatchGui(matchId);
+                }
+            }
+
             netLog.info("[Tournament] Match started — matchId={}, round={}", matchId, tournament.getActiveRound());
 
             lobby.broadcastTournamentEvent(
