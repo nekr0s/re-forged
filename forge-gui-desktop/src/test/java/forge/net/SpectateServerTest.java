@@ -38,6 +38,27 @@ public class SpectateServerTest {
     }
 
     @Test
+    public void inOwnMatchIsTrueForDefaultKey() {
+        RemoteClient client = new RemoteClient(new EmbeddedChannel());
+        // A playing participant's own-match GUI is keyed "default" by the legacy
+        // single-arg getGui path — the guard must treat that as "in a match".
+        new RemoteClientGuiGame(client);
+        Assert.assertTrue(FServerManager.isClientInOwnMatch(client),
+                "the legacy 'default' key means the client is playing their own match");
+    }
+
+    @Test
+    public void matchEndClearsDefaultGui() {
+        RemoteClient client = new RemoteClient(new EmbeddedChannel());
+        new RemoteClientGuiGame(client);
+        Assert.assertTrue(FServerManager.isClientInOwnMatch(client));
+        // onMatchOver(matchId) now clears the "default" entry for a finished participant.
+        client.removeMatchGui("default");
+        Assert.assertFalse(FServerManager.isClientInOwnMatch(client),
+                "after a match ends the participant is free to spectate");
+    }
+
+    @Test
     public void inOwnMatchIsFalseForPrefixedKeyOnly() {
         RemoteClient client = new RemoteClient(new EmbeddedChannel());
         // A spectator GUI is registered under the PREFIXED key (mirroring

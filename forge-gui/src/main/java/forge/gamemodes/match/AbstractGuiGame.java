@@ -296,7 +296,7 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
     public boolean mayView(final CardView c) {
         if (spectatorMode) {
             // Spectators see only public info: cards every player in the game can see.
-            if (gameView == null) {
+            if (gameView == null || gameView.getPlayers() == null) {
                 return false;
             }
             for (final PlayerView p : gameView.getPlayers()) {
@@ -320,12 +320,12 @@ public abstract class AbstractGuiGame implements IGuiGame, IMayViewCards {
 
     @Override
     public boolean mayFlip(final CardView cv) {
+        if (cv == null) {
+            return false;
+        }
         if (spectatorMode) {
             // A face-down card's face is private; a face-up card's back is public.
             return !cv.isFaceDown();
-        }
-        if (cv == null) {
-            return false;
         }
 
         final CardStateView altState = cv.getAlternateState();

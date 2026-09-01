@@ -165,6 +165,19 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
         }
         super.onMatchOver(matchId);
         FServerManager.getInstance().clearPlayerGuis(matchId);
+        // A remote player's own-match GUI is keyed as the legacy "default" entry by the
+        // single-arg getGui path, which clearPlayerGuis(matchId) cannot remove. Clear it
+        // for this match's remote participants so a finished player is free to spectate
+        // later rounds instead of being seen as permanently "in a match".
+        if (match != null && match.gameControllers != null) {
+            for (int i = 0; i < getNumberOfSlots(); i++) {
+                final LobbySlot slot = getSlot(i);
+                if (slot != null && slot.getType() == LobbySlotType.REMOTE
+                        && match.gameControllers.containsKey(slot)) {
+                    FServerManager.getInstance().clearPlayerGuiFor(i);
+                }
+            }
+        }
         // Only update lobby if no more matches active
         if (!isMatchActive()) {
             FServerManager.getInstance().updateLobbyState();
