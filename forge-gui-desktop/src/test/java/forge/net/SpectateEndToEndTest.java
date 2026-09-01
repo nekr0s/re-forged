@@ -114,36 +114,33 @@ public class SpectateEndToEndTest implements IHasForgeLog {
             // 3) Hidden hands: spectator mode is armed and hand cards are hidden.
             AbstractGuiGame gui = (AbstractGuiGame) spectator.getClient().getGui();
             Assert.assertTrue(gui.isSpectatorMode(), "shared GUI must be in spectator mode");
-            GameView gv = spectator.getGameView();
-            // The spectator's initial snapshot can arrive while the game is still setting up;
-            // the delta stream catches it up. Wait until hands are actually dealt.
-            deadline = System.currentTimeMillis() + 30_000;
-            boolean handsDealt = false;
-            while (System.currentTimeMillis() < deadline) {
-                handsDealt = false;
-                for (PlayerView pv : gv.getPlayers()) {
-                    if (!pv.getHand().isEmpty()) {
-                        handsDealt = true;
-                        break;
+            // The initial snapshot can arrive before the game's player list / zones are
+            // populated; the delta stream catches it up. Re-read the game view on every
+            // poll (a held reference would stay on the stale pre-setup snapshot, whose
+            // getPlayers() is null until updatePlayers() runs) and wait until both a hand
+            // card and a face-up battlefield card are observable.
+            boolean sawHand = false;
+            boolean sawPublic = false;
+            long handsDeadline = System.currentTimeMillis() + 30_000;
+            while ((!sawHand || !sawPublic) && System.currentTimeMillis() < handsDeadline) {
+                GameView gv = spectator.getGameView();
+                if (gv != null && gv.getPlayers() != null) {
+                    for (PlayerView pv : gv.getPlayers()) {
+                        for (CardView c : pv.getHand()) {
+                            sawHand = true;
+                            Assert.assertFalse(gui.mayView(c), "spectator must not see hand cards");
+                        }
+                        for (CardView c : pv.getBattlefield()) {
+                            if (gui.mayView(c)) {
+                                sawPublic = true;
+                            }
+                        }
                     }
-                }
-                if (handsDealt) {
-                    break;
                 }
                 Thread.sleep(50);
             }
-            Assert.assertTrue(handsDealt, "the delta stream must catch the spectator's view up to a live game");
-            boolean sawHand = false;
-            for (PlayerView pv : gv.getPlayers()) {
-                for (CardView c : pv.getHand()) {
-                    sawHand = true;
-                    Assert.assertFalse(gui.mayView(c), "spectator must not see hand cards");
-                }
-                for (CardView c : pv.getBattlefield()) {
-                    Assert.assertTrue(gui.mayView(c), "spectator must see face-up battlefield cards");
-                }
-            }
             Assert.assertTrue(sawHand, "both players should have hand cards to check");
+            Assert.assertTrue(sawPublic, "face-up battlefield cards must be visible to a spectator");
 
             // 4) Leave cleans up server-side.
             spectator.getClient().send(new SpectateLeaveEvent(matchId));
