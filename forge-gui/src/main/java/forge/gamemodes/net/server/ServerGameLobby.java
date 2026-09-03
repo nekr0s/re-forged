@@ -137,6 +137,10 @@ public final class ServerGameLobby extends GameLobby implements IHasForgeLog {
             // A client whose own match is starting drops any spectate — one active
             // game view per client.
             server.dropSpectates(client);
+        } else if (index == 0) {
+            // The host's own match is starting — close any host spectator view so
+            // the host also has a single active game view.
+            server.hostLeaveSpectate();
         }
         return server.getGui(index);
     }

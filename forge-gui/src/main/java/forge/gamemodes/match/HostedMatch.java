@@ -66,6 +66,7 @@ public class HostedMatch {
     private FControlGamePlayback playbackControl = null;
     private final MatchUiEventVisitor visitor = new MatchUiEventVisitor();
     private final Map<PlayerControllerHuman, NextGameDecision> nextGameDecisions = Maps.newHashMap();
+    private final Map<IGuiGame, FControlGameEventHandler> localSpectatorHandlers = Maps.newHashMap();
     private boolean isMatchOver = false;
     private boolean tournamentMatch = false;
     public int subGameCount = 0;
@@ -381,8 +382,26 @@ public class HostedMatch {
     public void registerSpectator(final IGuiGame gui, final PlayerControllerHuman humanController) {
         gui.setSpectator(humanController);
         gui.openView(null);
-        game.subscribeToEvents(new FControlGameEventHandler(humanController));
+        final FControlGameEventHandler handler = new FControlGameEventHandler(humanController);
+        game.subscribeToEvents(handler);
+        localSpectatorHandlers.put(gui, handler);
         humanControllers.add(humanController);
+    }
+
+    /**
+     * Remove a local spectator GUI from this match. Unsubscribes its event handler
+     * from the game event bus, drops its controller, and closes its game view so it
+     * stops receiving events mid-match. Null-safe for a match whose game has already
+     * been torn down. Mirrors {@link #unregisterNetworkSpectator} for the host's own
+     * spectator views (there is no RemoteClient for the host).
+     */
+    public void unregisterLocalSpectator(final IGuiGame gui) {
+        final FControlGameEventHandler handler = localSpectatorHandlers.remove(gui);
+        if (handler != null && game != null) {
+            game.unsubscribeFromEvents(handler);
+        }
+        humanControllers.removeIf(hc -> hc.getGui() == gui);
+        FThreads.invokeInEdtNowOrLater(gui::afterGameEnd);
     }
 
     /**

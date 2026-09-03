@@ -10,6 +10,7 @@ import forge.game.GameView;
 import forge.game.event.GameEvent;
 import forge.game.event.GameEventAddLog;
 import forge.game.player.Player;
+import forge.gamemodes.match.AbstractGuiGame;
 import forge.gamemodes.match.HostedMatch;
 import forge.gamemodes.match.LobbySlot;
 import forge.gamemodes.match.LobbySlotType;
@@ -24,12 +25,15 @@ import forge.gui.interfaces.INetEventHandler;
 import forge.util.IHasForgeLog;
 import forge.gamemodes.net.event.*;
 import forge.gui.GuiBase;
+import forge.gui.FThreads;
+import forge.gui.control.WatchLocalGame;
 import forge.gui.interfaces.IGuiGame;
 import forge.gui.util.SOptionPane;
 import forge.interfaces.IGameController;
 import forge.interfaces.ILobbyListener;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
+import forge.player.LobbyPlayerHuman;
 import forge.player.PlayerControllerHuman;
 import forge.util.BuildInfo;
 import forge.util.IterableUtil;
@@ -154,6 +158,8 @@ public final class FServerManager implements IHasForgeLog {
     private EventLoopGroup workerGroup = new NioEventLoopGroup();
     private UpnpService upnpService = null;
     private ServerGameLobby localLobby;
+    private IGuiGame hostSpectatorGui;
+    private String hostSpectatorMatchId;
     private ILobbyListener lobbyListener;
     private List<INetEventHandler> netEventHandlers;
     private boolean UPnPMapped = false;
@@ -621,6 +627,77 @@ public final class FServerManager implements IHasForgeLog {
         }
         client.removeMatchGui(spectateKey);
         netLog.info("Client {} stopped spectating match {}", client.getIndex(), matchId);
+    }
+
+    /**
+     * Host-only spectate: open a local spectator view of the given match on the host's
+     * screen. The host has no network client (see {@code NetConnectUtil.host}), so this
+     * mirrors the local auto-spectate path ({@code WatchLocalGame}) instead of the
+     * RemoteClient-based flow used for guests. Spectator mode hides hands and other
+     * private state.
+     *
+     * @param matchId the match to watch
+     * @return true if the spectator view was opened
+     */
+    public boolean hostSpectate(final String matchId) {
+        if (localLobby == null) {
+            return false;
+        }
+        final HostedMatch match = localLobby.getMatch(matchId);
+        if (match == null || match.getGame() == null) {
+            netLog.warn("Rejected host spectate for {}: no running match", matchId);
+            return false;
+        }
+        if (isHostInActiveMatch()) {
+            netLog.warn("Rejected host spectate for {}: host is playing their own match", matchId);
+            return false;
+        }
+        hostLeaveSpectate(); // one spectator view at a time on the host
+
+        final IGuiGame gui = GuiBase.getInterface().getNewGuiGame();
+        if (gui instanceof AbstractGuiGame agg) {
+            agg.setNetGame();
+            agg.setSpectatorMode(true);
+        }
+        gui.setGameView(null);
+        gui.setGameView(match.getGameView());
+        match.registerSpectator(gui, new WatchLocalGame(match.getGame(), new LobbyPlayerHuman("Spectator"), gui));
+
+        hostSpectatorGui = gui;
+        hostSpectatorMatchId = matchId;
+        netLog.info("Host now spectating match {}", matchId);
+        return true;
+    }
+
+    /** True if the host is currently playing their own active match (and so must not spectate). */
+    private boolean isHostInActiveMatch() {
+        final IGameController controller = localLobby.getController(0);
+        if (controller instanceof PlayerControllerHuman pch && pch.getPlayer() != null) {
+            final Game g = pch.getPlayer().getGame();
+            return g != null && !g.isGameOver();
+        }
+        return false;
+    }
+
+    /**
+     * Close the host's spectator view, if any. Called from the lobby's Stop Spectating
+     * menu action and automatically when the host's own match starts.
+     */
+    public void hostLeaveSpectate() {
+        final IGuiGame gui = hostSpectatorGui;
+        hostSpectatorGui = null;
+        final String matchId = hostSpectatorMatchId;
+        hostSpectatorMatchId = null;
+        if (gui == null) {
+            return;
+        }
+        final HostedMatch match = matchId != null ? localLobby.getMatch(matchId) : null;
+        if (match != null) {
+            match.unregisterLocalSpectator(gui);
+        } else {
+            FThreads.invokeInEdtNowOrLater(gui::afterGameEnd);
+        }
+        netLog.info("Host stopped spectating match {}", matchId);
     }
 
     public void setLobbyListener(final ILobbyListener listener) {

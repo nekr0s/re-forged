@@ -14,9 +14,11 @@ import java.util.List;
 
 /**
  * Gap 8: winner-determination policy in {@link ServerTournamentController}.
- * A match outcome must map to a pairing result without ever silently awarding
- * a win to the first player: null winner → DRAW, named winner → WIN, unknown
- * winner name → VOID.
+ * {@link ServerTournamentController#resolveMatchOutcome} maps a match outcome to
+ * a pairing result without ever silently awarding a win to the first player:
+ * null winner → DRAW, named winner → WIN, unknown winner name → VOID. The online
+ * tournament does not support draws, so {@link ServerTournamentController#resolveDecisive}
+ * wraps that mapping with a fallback that always records a decisive winner.
  */
 public class ServerTournamentControllerResultTest {
 
@@ -71,5 +73,42 @@ public class ServerTournamentControllerResultTest {
         TournamentPairing pairing = new TournamentPairing(1, solo);
         pairing.setWinner(solo.get(0));
         Assert.assertEquals(pairing.getResult(), TournamentPairing.MatchResult.WIN);
+    }
+
+    // resolveDecisive: the online tournament does not support draws — a null or
+    // unmatched winner falls back to the first paired player so every round records
+    // a winner (the pre-regression "always a winner" behavior).
+
+    @Test
+    public void testNullWinnerFallsBackToFirstPlayer() {
+        TournamentPairing pairing = pairingOf("Alice", "Bob");
+        TournamentPairing.MatchResult result =
+                ServerTournamentController.resolveDecisive(pairing, null);
+
+        Assert.assertEquals(result, TournamentPairing.MatchResult.WIN);
+        Assert.assertEquals(pairing.getWinner().getPlayer().getName(), "Alice",
+                "draws are unsupported: a null winner must fall back to the first player, not record a tie");
+    }
+
+    @Test
+    public void testUnmatchedWinnerFallsBackToFirstPlayer() {
+        TournamentPairing pairing = pairingOf("Alice", "Bob");
+        TournamentPairing.MatchResult result =
+                ServerTournamentController.resolveDecisive(pairing, new LobbyPlayerHuman("Stranger"));
+
+        Assert.assertEquals(result, TournamentPairing.MatchResult.WIN);
+        Assert.assertEquals(pairing.getWinner().getPlayer().getName(), "Alice",
+                "an unmatched winner name must fall back to the first player");
+    }
+
+    @Test
+    public void testMatchedWinnerStillWins() {
+        TournamentPairing pairing = pairingOf("Alice", "Bob");
+        TournamentPairing.MatchResult result =
+                ServerTournamentController.resolveDecisive(pairing, new LobbyPlayerHuman("Bob"));
+
+        Assert.assertEquals(result, TournamentPairing.MatchResult.WIN);
+        Assert.assertEquals(pairing.getWinner().getPlayer().getName(), "Bob",
+                "a real match winner must still be awarded the match");
     }
 }

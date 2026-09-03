@@ -3,6 +3,7 @@ package forge.gamemodes.net.client;
 import forge.game.*;
 import forge.game.card.CardView;
 import forge.game.player.PlayerView;
+import forge.gamemodes.match.AbstractGuiGame;
 import forge.gamemodes.net.CompatibleObjectDecoder;
 import forge.gamemodes.net.CompatibleObjectEncoder;
 import forge.gamemodes.net.GameProtocolHandler;
@@ -116,8 +117,19 @@ final class GameClientHandler extends GameProtocolHandler<IGuiGame> implements I
                 // Self-synchronizing spectator mode: an openView with no local players
                 // is a spectator view; one with local players is the client's own match.
                 final TrackableCollection<PlayerView> myPlayers = (TrackableCollection<PlayerView>) args[0];
-                gui.setSpectatorMode(myPlayers == null);
-                if (myPlayers != null) {
+                if (myPlayers == null) {
+                    // Spectator view: drop any local-player bookkeeping carried over from
+                    // the client's own previous match. Those gameControllers are keyed by
+                    // seat-id PlayerViews, so without this reset the spectator's GUI treats
+                    // the player at that seat as local — leaking that player's hand and other
+                    // private state into the spectate view. resetForNewMatch() clears it;
+                    // re-arm spectator mode afterwards (the reset also switches it off).
+                    if (gui instanceof AbstractGuiGame agg) {
+                        agg.resetForNewMatch();
+                    }
+                    gui.setSpectatorMode(true);
+                } else {
+                    gui.setSpectatorMode(false);
                     for (PlayerView myPlayer : myPlayers) {
                         if (myPlayer.getTracker() == null) {
                             myPlayer.setTracker(this.tracker);

@@ -114,6 +114,9 @@ public class SpectateEndToEndTest implements IHasForgeLog {
             // 3) Hidden hands: spectator mode is armed and hand cards are hidden.
             AbstractGuiGame gui = (AbstractGuiGame) spectator.getClient().getGui();
             Assert.assertTrue(gui.isSpectatorMode(), "shared GUI must be in spectator mode");
+            Assert.assertTrue(gui.getLocalPlayers().isEmpty(),
+                    "a spectator's GUI must not retain local players from a previous match — "
+                            + "seat-id PlayerViews would make the hand panel render that seat's hand");
             // The initial snapshot can arrive before the game's player list / zones are
             // populated; the delta stream catches it up. Re-read the game view on every
             // poll (a held reference would stay on the stale pre-setup snapshot, whose

@@ -363,7 +363,8 @@ public final class CMatchUI
 
     private void initMatch(final FCollectionView<PlayerView> sortedPlayers, final Collection<PlayerView> myPlayers) {
         this.sortedPlayers = sortedPlayers;
-        allHands = sortedPlayers.size() == getLocalPlayerCount();
+        // Spectators have no local players and never see any player's hand.
+        allHands = !isSpectatorMode() && sortedPlayers.size() == getLocalPlayerCount();
 
         if (isNetGame()) {
             netLog.debug("sortedPlayers count={}", sortedPlayers.size());
@@ -403,6 +404,15 @@ public final class CMatchUI
     }
 
     private void initHandViews() {
+        // Spectators see only public information, so never create hand views. Even
+        // with an empty local-player set CardView.mayViewAny(...) returns true, so
+        // the spectator mode flag must gate the hand panel explicitly — otherwise a
+        // stale own-match controller (keyed by seat-id PlayerView) leaks that seat's
+        // hand into the spectate view.
+        if (isSpectatorMode()) {
+            view.setHandViews(List.of());
+            return;
+        }
         final List<VHand> hands = new ArrayList<>();
         final Iterable<PlayerView> localPlayers = getLocalPlayers();
 

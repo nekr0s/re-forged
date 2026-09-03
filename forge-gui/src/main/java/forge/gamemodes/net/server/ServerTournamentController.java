@@ -339,28 +339,37 @@ public class ServerTournamentController implements IHasForgeLog {
         }
 
         if (match == null || match.getMatch() == null) {
-            pairing.markVoid();
-            netLog.warn("[Tournament] Match or match.getMatch() was null — VOID (no points awarded)");
+            // No underlying match to read a result from — fall back so every pairing
+            // still records a decisive result.
+            netLog.warn("[Tournament] Match or match.getMatch() was null — falling back to first player");
+            pairing.setWinner(pairedPlayers.get(0));
             return;
         }
 
         RegisteredPlayer winner = match.getMatch().getWinner();
         LobbyPlayer winnerPlayer = winner != null ? winner.getPlayer() : null;
-        TournamentPairing.MatchResult result = resolveMatchOutcome(pairing, winnerPlayer);
-        switch (result) {
-            case WIN:
-                netLog.info("[Tournament] Winner determined by match outcome: {}", winnerPlayer.getName());
-                break;
-            case DRAW:
-                netLog.warn("[Tournament] Match ended with no winner (draw) — recording a tie");
-                break;
-            case VOID:
-                netLog.error("[Tournament] Match winner '{}' not found among pairing players — VOID (no points awarded)",
-                        winnerPlayer == null ? "null" : winnerPlayer.getName());
-                break;
-            default:
-                break;
+        resolveDecisive(pairing, winnerPlayer);
+        netLog.info("[Tournament] Winner determined: {} (match winner: {})",
+                pairing.getWinner().getPlayer().getName(),
+                winnerPlayer == null ? "null" : winnerPlayer.getName());
+    }
+
+    /**
+     * Maps a match outcome onto a pairing, always recording a decisive result.
+     * Draws are not supported in the online tournament: a null winner (draw) or
+     * an unmatched winner name (desync) falls back to the first paired player so
+     * every round records a winner instead of leaving everyone at 0-0.
+     *
+     * @param pairing the pairing to mutate
+     * @param matchWinner the match's winning lobby player, or null for a draw
+     * @return the {@link TournamentPairing.MatchResult} recorded
+     */
+    public static TournamentPairing.MatchResult resolveDecisive(TournamentPairing pairing, LobbyPlayer matchWinner) {
+        TournamentPairing.MatchResult result = resolveMatchOutcome(pairing, matchWinner);
+        if (result != TournamentPairing.MatchResult.WIN) {
+            pairing.setWinner(pairing.getPairedPlayers().get(0));
         }
+        return pairing.getResult();
     }
 
     /**

@@ -20,6 +20,7 @@ import forge.gamemodes.match.LobbySlot;
 import forge.gamemodes.net.*;
 import forge.gamemodes.net.client.FGameClient;
 import forge.gamemodes.net.event.*;
+import forge.gamemodes.net.server.FServerManager;
 import forge.gamemodes.net.server.ServerGameLobby;
 import forge.gui.FDraftOverlay;
 import forge.gui.GuiChoose;
@@ -589,6 +590,15 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
     public List<StandingView> getTournamentStandings() { return tournamentStandings; }
 
     void requestSpectate(String matchId) {
+        if (FServerManager.getInstance().isHosting()) {
+            // Host path: there is no network client, so open a local spectator view directly.
+            if (FServerManager.getInstance().hostSpectate(matchId)) {
+                spectatingMatchId = matchId;
+            } else {
+                SwingUtilities.invokeLater(() -> view.showSpectateView(null));
+            }
+            return;
+        }
         FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
         if (client != null) {
             client.send(new SpectateRequestEvent(matchId));
@@ -669,6 +679,10 @@ public class CLobby implements IDraftEventHandler, ITournamentEventHandler {
         if (spectatingMatchId == null) { return; }
         final String id = spectatingMatchId;
         spectatingMatchId = null;
+        if (FServerManager.getInstance().isHosting()) {
+            FServerManager.getInstance().hostLeaveSpectate();
+            return;
+        }
         final FGameClient client = VSubmenuOnlineLobby.SINGLETON_INSTANCE.getClient();
         if (client != null) {
             if (client.getGui() instanceof AbstractGuiGame agg) {
