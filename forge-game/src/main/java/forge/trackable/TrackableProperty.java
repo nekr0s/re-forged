@@ -217,7 +217,6 @@ public enum TrackableProperty {
     SA_IsSpell(TrackableTypes.BooleanType),
 
     //HasBackSide
-    BackSideName(TrackableTypes.StringType),
     HasBackSide(TrackableTypes.BooleanType),
 
     //StackItem
@@ -258,6 +257,7 @@ public enum TrackableProperty {
     PoisonCountersToLose(TrackableTypes.IntegerType),
     PlayerTurn(TrackableTypes.PlayerViewType, FreezeMode.IgnoresFreeze),
     Phase(TrackableTypes.EnumType(PhaseType.class), FreezeMode.IgnoresFreeze),
+    Object(TrackableTypes.ObjectType, FreezeMode.IgnoresFreeze),
     Dependencies(TrackableTypes.StringType);
 
     public enum FreezeMode {
