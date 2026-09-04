@@ -52,6 +52,7 @@ import android.widget.RelativeLayout;
 import android.widget.TableLayout;
 import android.widget.TableRow;
 import android.widget.TextView;
+import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Version;
 import com.badlogic.gdx.backends.android.AndroidApplication;
@@ -92,6 +93,7 @@ public class Main extends AndroidApplication {
     private SharedPreferences sharedPreferences;
     private int mShortAnimationDuration;
     private View forgeLogo = null, forgeView = null, activeView = null;
+    private ApplicationListener forgeApp = null;
     private ProgressBar progressBar;
     private TextView progressText;
     private String versionString;
@@ -385,7 +387,8 @@ public class Main extends AndroidApplication {
             forgeLogo = findViewById(resId("id", "logo_id"));
             activeView = findViewById(resId("id", "mainview"));
             activeView.setBackgroundColor(Color.WHITE);
-            forgeView = initializeForView(Forge.getApp(hwInfo, getAndroidClipboard(), adapter, ASSETS_DIR, !isLandscape, isTabletDevice, Build.VERSION.SDK_INT), config);
+            forgeApp = Forge.getApp(hwInfo, getAndroidClipboard(), adapter, ASSETS_DIR, !isLandscape, isTabletDevice, Build.VERSION.SDK_INT);
+            forgeView = initializeForView(forgeApp, config);
 
             getAnimator(ObjectAnimator.ofFloat(forgeLogo, "alpha", 1f, 1f).setDuration(800), ObjectAnimator.ofObject(activeView, "backgroundColor", new ArgbEvaluator(), Color.WHITE, Color.BLACK).setDuration(1600), new AnimatorListenerAdapter() {
                 @Override
@@ -579,6 +582,9 @@ public class Main extends AndroidApplication {
             heapHeartbeatHandler.removeCallbacks(heapHeartbeat);
             heapHeartbeatHandler = null;
         }
+        // commented out since this prematurely destroy the running dispose scheduler
+        //if (forgeApp != null)
+            //forgeApp.dispose();
         super.onDestroy();
         //ensure app doesn't stick around
         //ActivityManager am = (ActivityManager)getSystemService(Activity.ACTIVITY_SERVICE);
@@ -821,10 +827,10 @@ public class Main extends AndroidApplication {
 
         @Override
         public void exit() {
-            finish();
-
-            //ensure process fully killed
-            System.exit(0);
+            Gdx.app.exit();
+            // commented out finish() since this is called by Gdx.app,exit() calling finish() early here
+            // may break the dispose calls scheduler so let Gdx run its lifecycle scheduler instead of forcing it
+            //finish();
         }
 
         @Override
